@@ -1,0 +1,36 @@
+🎯 K-FOLD CROSS VALIDATION EVALUATION RESULTS
+============================================================
+
+📊 DATA SPLIT:
+   Total Dramas: 78
+   Number of Folds: 5
+   Average Rating: 6.83
+   Rating Std: 2.23
+
+📈 RANKING METRICS:
+   Spearman Correlation: -0.095
+   Kendall Correlation: -0.060
+
+🎯 RANKING ACCURACY:
+   top_25%: Precision 0.211, Recall 0.211, F1 0.211
+   top_33%: Precision 0.308, Recall 0.308, F1 0.308
+   top_50%: Precision 0.513, Recall 0.513, F1 0.513
+
+📊 SIMILARITY DISTRIBUTION:
+   Mean Similarity: 0.426
+   Std Similarity: 0.014
+   Similarity Range: 0.370 - 0.451
+   High Similarity (>0.5): 0 dramas
+   Low Similarity (<0.2): 0 dramas
+   Skewness: -1.169
+
+🔧 FOLD STABILITY:
+   Fold Similarity Mean: 0.426
+   Fold Similarity Std: 0.003
+   Fold Correlation Mean: -0.122
+   Fold Correlation Std: 0.197
+
+🔧 COMPONENT ANALYSIS:
+   Categorical: Correlation -0.033 (p=0.771)
+   Text: Correlation -0.109 (p=0.342)
+   Semantic: Correlation -0.085 (p=0.457)
