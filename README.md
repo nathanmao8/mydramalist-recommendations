@@ -63,7 +63,7 @@ A sophisticated drama recommendation system that combines machine learning model
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd mdl_prediction
+cd mydramalist-recommendations
 ```
 
 2. Install dependencies:
