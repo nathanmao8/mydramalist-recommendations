@@ -189,38 +189,11 @@ The system uses multiple evaluation metrics:
 3. **Semantic Patterns**: Advanced pattern recognition
 4. **Rating Patterns**: User rating distribution analysis
 
-### Similarity Calculation
-```
-Overall Similarity = 0.3 × Categorical + 0.25 × Text + 0.45 × Semantic
-```
-
 ### Features
 - **Weighted by Ratings**: Higher-rated dramas have more influence
 - **Multi-dimensional**: Combines explicit and implicit preferences
 - **Explainable**: Provides reasoning for each recommendation
 - **Dynamic**: Adapts to user rating patterns
-
-## Development Status
-
-### ✅ **Completed**
-- Core ML pipeline with Random Forest and SVM
-- Taste profile analysis system
-- Semantic similarity extraction
-- Comprehensive evaluation framework
-- Model interpretability with SHAP
-- API integration with Kuryana
-
-### 🔄 **In Progress**
-- Integration of taste profile with ML models
-- Enhanced recommendation blending
-- Performance optimization
-- Additional evaluation metrics
-
-### 📋 **Planned**
-- Advanced hybrid recommendation algorithms
-- Real-time recommendation updates
-- User interface improvements
-- Additional data sources
 
 ## Technical Details
 
@@ -248,7 +221,7 @@ This project is for personal use and educational purposes.
 
 ## Acknowledgments
 
-- [Kuryana API](https://kuryana.tbdh.app) for drama data
+- [Kuryana API](https://github.com/tbdsux/kuryana) for drama data
 - [MyDramaList](https://mydramalist.com) for the drama database
 - [Sentence Transformers](https://www.sbert.net/) for semantic similarity
 - [SHAP](https://github.com/slundberg/shap) for model interpretability
