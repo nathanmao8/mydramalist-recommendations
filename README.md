@@ -1,6 +1,6 @@
 # MyDramaList Recommendation System
 
-> **⚠️ Work in Progress** - This project is currently under active development. The core components have been tested and validated, and the next phase involves combining the taste profile system with machine learning models (Random Forest and SVM) for enhanced recommendations.
+> **⚠️ Work in Progress** - This project is currently under active development.
 
 ## Overview
 
