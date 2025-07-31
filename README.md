@@ -80,7 +80,7 @@ export TOKENIZERS_PARALLELISM=false
 
 ### Basic Usage
 
-The system requires a MyDramaList user ID to generate recommendations:
+The system requires a MyDramaList user ID to generate recommendations. A MyDramaList account with an updated watchlist containing your rated dramas is required:
 
 ```bash
 python main.py --user-id YOUR_USERNAME

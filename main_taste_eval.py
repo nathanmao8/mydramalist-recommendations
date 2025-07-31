@@ -57,7 +57,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Drama Recommendation with Taste Profile Analysis')
     
     # Data and model parameters
-    parser.add_argument('--user-id', type=str, default='oamen', help='User ID for drama data')
+    parser.add_argument('--user-id', type=str, required=True, help='User ID for drama data')
     parser.add_argument('--output', type=str, default='drama_predictions.csv', help='Output file path')
     
     # # Feature configuration
