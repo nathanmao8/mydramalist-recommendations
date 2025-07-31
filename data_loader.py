@@ -24,7 +24,7 @@ class DataLoader:
         all_slugs = set()
         
         # Loop through all 75 files
-        for i in range(1, 76):
+        for i in range(1, 2):
             filename = f'popular{i}.html'
             filepath = os.path.join(folder_path, filename)
             

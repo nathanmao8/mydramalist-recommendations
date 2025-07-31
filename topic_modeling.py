@@ -137,18 +137,21 @@ class TopicModelingExtractor:
         Returns:
             Dictionary with profile topic distributions
         """
-        if not self.is_fitted:
-            print("    ⚠️ Topic models not fitted yet")
-            return {'synopsis_topics': None, 'review_topics': None}
-        
         print(f"    📚 Building profile topic distributions...")
         
         # Collect all texts
-        synopsis_texts = [drama.get('synopsis', '') for drama in dramas]
-        review_texts = [drama.get('reviews', '') for drama in dramas]
+        synopsis_texts = [drama.get('synopsis_clean', '') for drama in dramas]
+        review_texts = [drama.get('reviews_combined', '') for drama in dramas]
+        
+        # Debug: Check if we have any non-empty texts
+        non_empty_synopsis = sum(1 for text in synopsis_texts if text and text.strip())
+        non_empty_reviews = sum(1 for text in review_texts if text and text.strip())
+        print(f"    📊 Found {non_empty_synopsis}/{len(synopsis_texts)} non-empty synopsis texts")
+        print(f"    📊 Found {non_empty_reviews}/{len(review_texts)} non-empty review texts")
         
         # Fit models if not already fitted
         if not self.is_fitted:
+            print(f"    🔧 Fitting topic models with {len(synopsis_texts)} synopsis and {len(review_texts)} review texts...")
             self.fit_topic_models(synopsis_texts, review_texts)
         
         # Calculate weighted average topic distributions
@@ -159,8 +162,8 @@ class TopicModelingExtractor:
         
         for i, drama in enumerate(dramas):
             topic_dist = self.extract_topic_distributions(
-                drama.get('synopsis', ''),
-                drama.get('reviews', '')
+                drama.get('synopsis_clean', ''),
+                drama.get('reviews_combined', '')
             )
             
             weight = weights[i] / total_weight
@@ -191,8 +194,8 @@ class TopicModelingExtractor:
         
         # Extract drama topic distributions
         drama_topics = self.extract_topic_distributions(
-            drama.get('synopsis', ''),
-            drama.get('reviews', '')
+            drama.get('synopsis_clean', ''),
+            drama.get('reviews_combined', '')
         )
         
         # Calculate similarities
