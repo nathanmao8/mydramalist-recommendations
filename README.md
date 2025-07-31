@@ -1,6 +1,6 @@
 # MyDramaList Recommendation System
 
-> **⚠️ Work in Progress** - This project is currently under active development.
+> **Work in Progress** - This project is currently under active development.
 
 ## Overview
 
@@ -8,25 +8,25 @@ A sophisticated drama recommendation system that combines machine learning model
 
 ## Features
 
-### 🎯 **Core Recommendation Engine**
+### **Core Recommendation Engine**
 - **Machine Learning Models**: Random Forest and SVM with both traditional and BERT-enhanced features
 - **Taste Profile Analysis**: Personalized user preference modeling across multiple dimensions
 - **Semantic Similarity**: Advanced text analysis using sentence transformers
 - **Multi-dimensional Features**: Genres, tags, cast, crew, synopsis, and reviews
 
-### 📊 **Advanced Analytics**
+### **Advanced Analytics**
 - **Model Interpretability**: SHAP explanations for understanding feature importance
 - **Cross-validation**: LOOCV and K-fold evaluation for robust performance assessment
 - **Performance Metrics**: Precision of 0.632 for high-rated content identification
 - **Dynamic Thresholding**: Adaptive similarity thresholds based on user rating patterns
 
-### 🔍 **Taste Profile System**
+### **Taste Profile System**
 - **Categorical Preferences**: Genre, tag, actor, director, screenwriter preferences
 - **Text Content Analysis**: Synopsis and review embedding similarity
 - **Semantic Patterns**: Advanced pattern recognition in content preferences
 - **Rating Pattern Analysis**: User rating distribution and consistency analysis
 
-### 📈 **Evaluation & Validation**
+### **Evaluation & Validation**
 - **Stratified Evaluation**: Holdout evaluation for taste profile performance
 - **Cross-validation**: Comprehensive model validation across different datasets
 - **Feature Importance**: Detailed analysis of what drives recommendations
@@ -146,21 +146,21 @@ The system integrates with the [Kuryana API](https://kuryana.tbdh.app) to retrie
 
 The system generates several output files:
 
-### 📄 **Core Outputs**
+### **Core Outputs**
 - `drama_predictions.csv` - Final recommendations with predicted ratings
 - `enhanced_predictions.csv` - Predictions enhanced with taste similarity
 
-### 📊 **Analysis Files**
+### **Analysis Files**
 - `taste_analysis_results.csv` - Taste profile insights and statistics
 - `taste_similarities.csv` - Similarity scores for all unwatched dramas
 - `user_taste_profile.json` - Complete taste profile (reloadable)
 
-### 📈 **Evaluation Results**
+### **Evaluation Results**
 - `loocv_evaluation_results.csv` - Cross-validation performance metrics
 - `stratified_evaluation_results.csv` - Stratified evaluation results
 - `kfold_evaluation_results.csv` - K-fold cross-validation results
 
-### 🎨 **Visualizations**
+### **Visualizations**
 - `loocv_evaluation_visualization.png` - LOOCV performance plots
 - `stratified_evaluation_visualization.png` - Stratified evaluation plots
 - `kfold_evaluation_visualization.png` - K-fold evaluation plots
@@ -189,38 +189,11 @@ The system uses multiple evaluation metrics:
 3. **Semantic Patterns**: Advanced pattern recognition
 4. **Rating Patterns**: User rating distribution analysis
 
-### Similarity Calculation
-```
-Overall Similarity = 0.3 × Categorical + 0.25 × Text + 0.45 × Semantic
-```
-
 ### Features
 - **Weighted by Ratings**: Higher-rated dramas have more influence
 - **Multi-dimensional**: Combines explicit and implicit preferences
 - **Explainable**: Provides reasoning for each recommendation
 - **Dynamic**: Adapts to user rating patterns
-
-## Development Status
-
-### ✅ **Completed**
-- Core ML pipeline with Random Forest and SVM
-- Taste profile analysis system
-- Semantic similarity extraction
-- Comprehensive evaluation framework
-- Model interpretability with SHAP
-- API integration with Kuryana
-
-### 🔄 **In Progress**
-- Integration of taste profile with ML models
-- Enhanced recommendation blending
-- Performance optimization
-- Additional evaluation metrics
-
-### 📋 **Planned**
-- Advanced hybrid recommendation algorithms
-- Real-time recommendation updates
-- User interface improvements
-- Additional data sources
 
 ## Technical Details
 
@@ -248,7 +221,7 @@ This project is for personal use and educational purposes.
 
 ## Acknowledgments
 
-- [Kuryana API](https://kuryana.tbdh.app) for drama data
+- [Kuryana API](https://github.com/tbdsux/kuryana) for drama data
 - [MyDramaList](https://mydramalist.com) for the drama database
 - [Sentence Transformers](https://www.sbert.net/) for semantic similarity
 - [SHAP](https://github.com/slundberg/shap) for model interpretability
