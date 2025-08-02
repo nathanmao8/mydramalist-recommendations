@@ -137,7 +137,6 @@ dmypy.json
 # Cache files
 bert_embeddings_cache.json
 semantic_embeddings_cache.json
-popular_dramas_processed.json
 watched_non_popular_cache.json
 
 # Output files
