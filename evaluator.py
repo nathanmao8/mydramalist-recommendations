@@ -22,7 +22,6 @@ class EvaluationConstants:
     SUB_SEPARATOR_CHAR: str = "-"
     
     # Metrics
-    PRECISION_THRESHOLD: float = 7.5
     DEFAULT_TOP_N_FEATURES: int = 20
     DEFAULT_TOP_N_PERMUTATION: int = 15
     DEFAULT_HIGHLIGHTS: int = 5
@@ -323,7 +322,7 @@ class ResultsFormatter:
         """
         Create and display model performance comparison table.
         
-        Formats and displays a table comparing RMSE, MAE, R², precision,
+        Formats and displays a table comparing MAP, Precision@K metrics,
         and training time across all models.
         
         Parameters
@@ -339,14 +338,15 @@ class ResultsFormatter:
         print(self.constants.SUB_SEPARATOR_CHAR * self.constants.SEPARATOR_WIDTH)
         
         # Header
-        headers = ['Model', 'RMSE', 'MAE', 'R²', f'Precision@{self.constants.PRECISION_THRESHOLD}+', 'Time(s)']
+        headers = ['Model', 'MAP@10%', 'MAP@25%', 'MAP@33%', 'Precision@10%', 'Precision@25%', 'Precision@33%']
         widths = [
             self.constants.MODEL_COL_WIDTH,
             self.constants.METRIC_COL_WIDTH,
             self.constants.METRIC_COL_WIDTH,
             self.constants.METRIC_COL_WIDTH,
-            self.constants.PRECISION_COL_WIDTH,
-            self.constants.TIME_COL_WIDTH
+            self.constants.METRIC_COL_WIDTH,
+            self.constants.METRIC_COL_WIDTH,
+            self.constants.METRIC_COL_WIDTH
         ]
         
         header_line = "".join(f"{header:<{width}}" for header, width in zip(headers, widths))
@@ -373,13 +373,15 @@ class ResultsFormatter:
         Returns
         -------
         Dict[str, float]
-            Dictionary containing extracted metrics (rmse, mae, r2, precision, time).
+            Dictionary containing extracted metrics (map, precision_10, precision_25, precision_33, time).
         """
         return {
-            'rmse': results.get(f'{model_key}_RMSE', 0),
-            'mae': results.get(f'{model_key}_MAE', 0),
-            'r2': results.get(f'{model_key}_R2', 0),
-            'precision': results.get(f'{model_key}_Precision_{self.constants.PRECISION_THRESHOLD}+', 0),
+            'map_10': results.get(f'{model_key}_MAP_10%', 0),
+            'map_25': results.get(f'{model_key}_MAP_25%', 0),
+            'map_33': results.get(f'{model_key}_MAP_33%', 0),
+            'precision_10': results.get(f'{model_key}_Precision_at_10%', 0),
+            'precision_25': results.get(f'{model_key}_Precision_at_25%', 0),
+            'precision_33': results.get(f'{model_key}_Precision_at_33%', 0),
             'time': results.get(f'{model_key}_TrainingTime', 0)
         }
     
@@ -403,11 +405,12 @@ class ResultsFormatter:
         """
         values = [
             model_name,
-            f"{metrics['rmse']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
-            f"{metrics['mae']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
-            f"{metrics['r2']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
-            f"{metrics['precision']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
-            f"{metrics['time']:.1f}"
+            f"{metrics['map_10']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
+            f"{metrics['map_25']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
+            f"{metrics['map_33']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
+            f"{metrics['precision_10']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
+            f"{metrics['precision_25']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}",
+            f"{metrics['precision_33']:.{self.constants.DISPLAY_DECIMAL_PLACES}f}"
         ]
         
         return "".join(f"{value:<{width}}" for value, width in zip(values, widths))
@@ -444,7 +447,7 @@ class ResultsFormatter:
         Display model recommendations based on performance metrics.
         
         Identifies and displays the best performing models for different
-        metrics (precision and R² score).
+        ranking metrics (MAP and Precision@K).
         
         Parameters
         ----------
@@ -459,18 +462,25 @@ class ResultsFormatter:
         
         best_models = self._find_best_models(results)
         
-        precision_key = f'Precision_{self.constants.PRECISION_THRESHOLD}+'
-        print(f"• Best {precision_key}: {best_models['precision']['name']} "
-              f"({best_models['precision']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
-        print(f"• Best R² Score: {best_models['r2']['name']} "
-              f"({best_models['r2']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best MAP@10%: {best_models['map_10']['name']} "
+              f"({best_models['map_10']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best MAP@25%: {best_models['map_25']['name']} "
+              f"({best_models['map_25']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best MAP@33%: {best_models['map_33']['name']} "
+              f"({best_models['map_33']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best Precision@10%: {best_models['precision_10']['name']} "
+              f"({best_models['precision_10']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best Precision@25%: {best_models['precision_25']['name']} "
+              f"({best_models['precision_25']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
+        print(f"• Best Precision@33%: {best_models['precision_33']['name']} "
+              f"({best_models['precision_33']['score']:.{self.constants.DISPLAY_DECIMAL_PLACES}f})")
     
     def _find_best_models(self, results: Dict) -> Dict[str, Dict[str, Any]]:
         """
         Find the best performing models for different metrics.
         
         Iterates through all models to find the highest performing ones
-        for precision and R² metrics.
+        for MAP and Precision@K metrics.
         
         Parameters
         ----------
@@ -480,23 +490,50 @@ class ResultsFormatter:
         Returns
         -------
         Dict[str, Dict[str, Any]]
-            Dictionary with 'precision' and 'r2' keys, each containing
-            the best model's name and score.
+            Dictionary with 'map', 'precision_10', 'precision_25', 'precision_33' keys, 
+            each containing the best model's name and score.
         """
-        best_precision = {'score': 0, 'name': ''}
-        best_r2 = {'score': 0, 'name': ''}
+        best_map_10 = {'score': 0, 'name': ''}
+        best_map_25 = {'score': 0, 'name': ''}
+        best_map_33 = {'score': 0, 'name': ''}
+        best_precision_10 = {'score': 0, 'name': ''}
+        best_precision_25 = {'score': 0, 'name': ''}
+        best_precision_33 = {'score': 0, 'name': ''}
         
         for model in self.model_config.MODEL_KEYS:
-            precision = results.get(f'{model}_Precision_{self.constants.PRECISION_THRESHOLD}+', 0)
-            r2 = results.get(f'{model}_R2', 0)
+            map_10 = results.get(f'{model}_MAP_10%', 0)
+            map_25 = results.get(f'{model}_MAP_25%', 0)
+            map_33 = results.get(f'{model}_MAP_33%', 0)
+            precision_10 = results.get(f'{model}_Precision_at_10%', 0)
+            precision_25 = results.get(f'{model}_Precision_at_25%', 0)
+            precision_33 = results.get(f'{model}_Precision_at_33%', 0)
             
-            if precision > best_precision['score']:
-                best_precision = {'score': precision, 'name': model}
+            if map_10 > best_map_10['score']:
+                best_map_10 = {'score': map_10, 'name': model}
             
-            if r2 > best_r2['score']:
-                best_r2 = {'score': r2, 'name': model}
+            if map_25 > best_map_25['score']:
+                best_map_25 = {'score': map_25, 'name': model}
+            
+            if map_33 > best_map_33['score']:
+                best_map_33 = {'score': map_33, 'name': model}
+            
+            if precision_10 > best_precision_10['score']:
+                best_precision_10 = {'score': precision_10, 'name': model}
+            
+            if precision_25 > best_precision_25['score']:
+                best_precision_25 = {'score': precision_25, 'name': model}
+            
+            if precision_33 > best_precision_33['score']:
+                best_precision_33 = {'score': precision_33, 'name': model}
         
-        return {'precision': best_precision, 'r2': best_r2}
+        return {
+            'map_10': best_map_10,
+            'map_25': best_map_25,
+            'map_33': best_map_33,
+            'precision_10': best_precision_10, 
+            'precision_25': best_precision_25,
+            'precision_33': best_precision_33
+        }
     
     def _print_header(self, title: str) -> None:
         """

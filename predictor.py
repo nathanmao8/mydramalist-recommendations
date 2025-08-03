@@ -210,80 +210,12 @@ class ModelPredictor:
             logger.error(f"Error generating model predictions: {e}")
             raise ValueError(f"Invalid model or feature data: {e}")
 
-class EnsembleCalculator:
-    """
-    Handles ensemble prediction calculations.
-    
-    This class provides methods for combining individual model predictions
-    into ensemble predictions using various weighting strategies.
-    """
-    
-    @staticmethod
-    def calculate_ensemble_predictions(model_predictions: Dict[str, float],
-                                     config: PredictionConfig) -> Dict[str, float]:
-        """
-        Calculate ensemble predictions from individual model outputs.
-        
-        Combines predictions from traditional and BERT models to create
-        sub-ensemble predictions, then combines these using configuration weights
-        to produce a final ensemble prediction.
-
-        Parameters
-        ----------
-        model_predictions : Dict[str, float]
-            Dictionary containing individual model predictions with keys:
-            'rf_traditional', 'svm_traditional', 'rf_bert', 'svm_bert'.
-        config : PredictionConfig
-            Configuration object containing ensemble weights for combining
-            traditional and BERT predictions.
-            
-        Returns
-        -------
-        Dict[str, float]
-            Dictionary containing ensemble predictions:
-            - 'traditional_ensemble': Average of traditional model predictions
-            - 'bert_ensemble': Average of BERT model predictions
-            - 'final_prediction': Weighted combination of sub-ensembles
-            
-        Examples
-        --------
-        >>> model_preds = {'rf_traditional': 0.8, 'svm_traditional': 0.7, 
-        ...                'rf_bert': 0.9, 'svm_bert': 0.85}
-        >>> config = PredictionConfig()
-        >>> ensembles = calculate_ensemble_predictions(model_preds, config)
-        >>> print(ensembles['final_prediction'])
-        0.8125
-        """
-        # Calculate sub-ensemble predictions
-        traditional_ensemble = (
-            model_predictions['rf_traditional'] + 
-            model_predictions['svm_traditional']
-        ) / 2
-        
-        bert_ensemble = (
-            model_predictions['rf_bert'] + 
-            model_predictions['svm_bert']
-        ) / 2
-        
-        # Calculate weighted final ensemble
-        final_prediction = (
-            traditional_ensemble * config.ensemble_weights['traditional'] +
-            bert_ensemble * config.ensemble_weights['bert']
-        )
-        
-        return {
-            'traditional_ensemble': traditional_ensemble,
-            'bert_ensemble': bert_ensemble,
-            'final_prediction': final_prediction
-        }
-
 class Predictor:
     """
     Main predictor class for drama recommendation system.
     
     This class orchestrates the prediction process by combining feature extraction,
-    model prediction, ensemble calculation, and confidence scoring to generate
-    comprehensive drama recommendations.
+    model prediction, and confidence scoring to generate comprehensive drama recommendations.
     
     Attributes
     ----------
@@ -293,8 +225,6 @@ class Predictor:
         Calculator for confidence scores.
     model_predictor : ModelPredictor
         Handler for individual model predictions.
-    ensemble_calculator : EnsembleCalculator
-        Calculator for ensemble predictions.
     """
     
     def __init__(self, config: Optional[PredictionConfig] = None):
@@ -310,7 +240,6 @@ class Predictor:
         self.config = config or PredictionConfig()
         self.confidence_calculator = ConfidenceCalculator()
         self.model_predictor = ModelPredictor()
-        self.ensemble_calculator = EnsembleCalculator()
     
     def predict_all_dramas(self, 
                           dramas: List[Dict], 
@@ -318,10 +247,10 @@ class Predictor:
                           X_traditional: np.ndarray, 
                           X_hybrid: np.ndarray) -> pd.DataFrame:
         """
-        Generate predictions for all unwatched dramas with both model types.
+        Generate predictions for all unwatched dramas with individual model scores.
         
-        Processes a list of dramas to generate comprehensive predictions including
-        individual model scores, ensemble predictions, and confidence metrics.
+        Processes a list of dramas to generate predictions from each individual model
+        without any ensemble calculations.
 
         Parameters
         ----------
@@ -339,9 +268,7 @@ class Predictor:
         pd.DataFrame
             DataFrame containing prediction results with columns for:
             - Drama metadata (title, ID)
-            - Individual model predictions
-            - Ensemble predictions  
-            - Confidence scores
+            - Individual model predictions (rf_traditional, svm_traditional, rf_bert, svm_bert)
             
         Raises
         ------
@@ -380,8 +307,7 @@ class Predictor:
         Generate prediction for a single drama.
         
         Coordinates the prediction process for a single drama by getting
-        individual model predictions, calculating ensembles, and computing
-        confidence scores.
+        individual model predictions without any ensemble calculations.
 
         Parameters
         ----------
@@ -397,10 +323,8 @@ class Predictor:
         Returns
         -------
         Dict[str, Any]
-            Dictionary containing comprehensive prediction results including:
+            Dictionary containing prediction results including:
             - Individual model predictions
-            - Ensemble predictions
-            - Confidence scores
             - Drama metadata
         """
         # Get predictions from all models
@@ -409,65 +333,12 @@ class Predictor:
             drama_features, trained_models
         )
         
-        # Calculate ensemble predictions
-        ensemble_predictions = self.ensemble_calculator.calculate_ensemble_predictions(
-            model_predictions, self.config
-        )
-        
-        # Calculate confidence scores
-        confidence_scores = self._calculate_confidence_scores(model_predictions)
-        
         # Format final result
-        return self._format_prediction_result(
-            drama, model_predictions, ensemble_predictions, confidence_scores
-        )
-    
-    def _calculate_confidence_scores(self, model_predictions: Dict[str, float]) -> Dict[str, float]:
-        """
-        Calculate confidence scores for different prediction types.
-        
-        Computes confidence scores for traditional models, BERT models, and
-        overall ensemble based on prediction variance within each group.
-
-        Parameters
-        ----------
-        model_predictions : Dict[str, float]
-            Dictionary containing predictions from all individual models.
-            
-        Returns
-        -------
-        Dict[str, float]
-            Dictionary containing confidence scores:
-            - 'traditional_confidence': Confidence for traditional models
-            - 'bert_confidence': Confidence for BERT models  
-            - 'overall_confidence': Weighted ensemble confidence
-        """
-        traditional_preds = [
-            model_predictions['rf_traditional'], 
-            model_predictions['svm_traditional']
-        ]
-        bert_preds = [
-            model_predictions['rf_bert'], 
-            model_predictions['svm_bert']
-        ]
-        
-        traditional_confidence = self.confidence_calculator.calculate_prediction_confidence(traditional_preds)
-        bert_confidence = self.confidence_calculator.calculate_prediction_confidence(bert_preds)
-        overall_confidence = self.confidence_calculator.calculate_ensemble_confidence(
-            traditional_confidence, bert_confidence, self.config.ensemble_weights
-        )
-        
-        return {
-            'traditional_confidence': traditional_confidence,
-            'bert_confidence': bert_confidence,
-            'overall_confidence': overall_confidence
-        }
+        return self._format_prediction_result(drama, model_predictions)
     
     def _format_prediction_result(self, 
                                 drama: Dict, 
-                                model_predictions: Dict[str, float],
-                                ensemble_predictions: Dict[str, float],
-                                confidence_scores: Dict[str, float]) -> Dict[str, Any]:
+                                model_predictions: Dict[str, float]) -> Dict[str, Any]:
         """
         Format the final prediction result.
         
@@ -480,17 +351,12 @@ class Predictor:
             Drama metadata dictionary.
         model_predictions : Dict[str, float]
             Individual model prediction values.
-        ensemble_predictions : Dict[str, float]
-            Ensemble prediction values.
-        confidence_scores : Dict[str, float]
-            Confidence score values.
             
         Returns
         -------
         Dict[str, Any]
             Formatted prediction result with standardized column names and
-            rounded numeric values (2 decimal places for predictions,
-            3 decimal places for confidence scores).
+            rounded numeric values (2 decimal places for predictions).
         """
         return {
             'Drama_Title': drama.get('title', ''),
@@ -498,13 +364,7 @@ class Predictor:
             'RF_Traditional': round(model_predictions['rf_traditional'], 2),
             'SVM_Traditional': round(model_predictions['svm_traditional'], 2),
             'RF_BERT': round(model_predictions['rf_bert'], 2),
-            'SVM_BERT': round(model_predictions['svm_bert'], 2),
-            'Traditional_Ensemble': round(ensemble_predictions['traditional_ensemble'], 2),
-            'BERT_Ensemble': round(ensemble_predictions['bert_ensemble'], 2),
-            'Final_Prediction': round(ensemble_predictions['final_prediction'], 2),
-            'Confidence_Score': round(confidence_scores['overall_confidence'], 3),
-            'Traditional_Confidence': round(confidence_scores['traditional_confidence'], 3),
-            'BERT_Confidence': round(confidence_scores['bert_confidence'], 3)
+            'SVM_BERT': round(model_predictions['svm_bert'], 2)
         }
     
     def _create_fallback_prediction(self, drama: Dict) -> Dict[str, Any]:
@@ -537,13 +397,7 @@ class Predictor:
             'RF_Traditional': 0.0,
             'SVM_Traditional': 0.0,
             'RF_BERT': 0.0,
-            'SVM_BERT': 0.0,
-            'Traditional_Ensemble': 0.0,
-            'BERT_Ensemble': 0.0,
-            'Final_Prediction': 0.0,
-            'Confidence_Score': 0.0,
-            'Traditional_Confidence': 0.0,
-            'BERT_Confidence': 0.0
+            'SVM_BERT': 0.0
         }
     
     # Legacy method for backward compatibility

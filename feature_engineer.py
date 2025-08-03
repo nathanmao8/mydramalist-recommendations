@@ -33,7 +33,7 @@ class FeatureEngineer:
         'use_crew': True,
         'use_genres': True, 
         'use_tags': True, 
-        'tfidf_max_features': 1000,
+        'tfidf_max_features': 200,  # Reduced from 1000 to reduce sparsity
         'bert_cache': True,
         'use_semantic_similarity': True,
         'semantic_model': 'all-MiniLM-L6-v2',
@@ -126,13 +126,27 @@ class FeatureEngineer:
         Notes
         -----
         Creates separate TfidfVectorizer instances for synopsis and reviews text.
-        Both use English stop words and limit features to config['tfidf_max_features'].
+        Uses improved parameters to reduce sparsity and create more meaningful features:
+        - Reduced max_features to 200 (from 1000)
+        - min_df=3: Only include words appearing in 3+ dramas
+        - max_df=0.7: Exclude words appearing in 70%+ of dramas
         Only initializes if config['use_tfidf'] is True.
         """
         if self.config['use_tfidf']:
-            max_features = self.config['tfidf_max_features']
-            self.synopsis_vectorizer = TfidfVectorizer(max_features=max_features, stop_words='english')
-            self.reviews_vectorizer = TfidfVectorizer(max_features=max_features, stop_words='english')
+            # Use improved parameters to reduce sparsity
+            max_features = min(self.config['tfidf_max_features'], 200)  # Cap at 200
+            self.synopsis_vectorizer = TfidfVectorizer(
+                max_features=max_features,
+                min_df=3,         # Only words appearing in 3+ dramas
+                max_df=0.7,       # Exclude words in 70%+ of dramas
+                stop_words='english'
+            )
+            self.reviews_vectorizer = TfidfVectorizer(
+                max_features=max_features,
+                min_df=3,         # Only words appearing in 3+ dramas
+                max_df=0.7,       # Exclude words in 70%+ of dramas
+                stop_words='english'
+            )
     
     def _initialize_categorical_encoders(self):
         """
@@ -440,7 +454,6 @@ class FeatureEngineer:
         if not self.config['use_tfidf']:
             return np.empty((len(dramas), 0))
         
-        print("Creating TF-IDF features...")
         synopsis_texts = [d.get('synopsis_clean', '') for d in dramas]
         review_texts = [d.get('reviews_combined', '') for d in dramas]
         
@@ -479,7 +492,6 @@ class FeatureEngineer:
         if not self.config['use_semantic_similarity']:
             return np.empty((len(dramas), 0))
         
-        print("Creating semantic similarity features...")
         semantic_features = self.semantic_extractor.extract_similarity_features(dramas)
         
         if is_training:
@@ -533,14 +545,12 @@ class FeatureEngineer:
         
         # Categorical Features
         if self._has_categorical_features_enabled():
-            print("Creating categorical features...")
             categorical_features = self.create_categorical_features(dramas, is_training)
             if categorical_features.size > 0:
                 feature_components.append(categorical_features)
         
         # Sentiment Features
         if self.config['use_sentiment']:
-            print("Creating sentiment features...")
             sentiment_features = self.create_sentiment_features(dramas, text_processor, is_training)
             if sentiment_features.size > 0:
                 feature_components.append(sentiment_features)
@@ -552,7 +562,6 @@ class FeatureEngineer:
         
         # Numerical Features
         if self.config['use_numerical_features']:
-            print("Creating numerical features...")
             numerical_features = self.create_numerical_features(dramas, is_training)
             if numerical_features.size > 0:
                 feature_components.append(numerical_features)
@@ -564,6 +573,18 @@ class FeatureEngineer:
             # Fallback: create minimal dummy features if nothing is enabled
             print("WARNING: No traditional features enabled, creating dummy features")
             traditional_features = np.ones((len(dramas), 1))
+        
+        # Apply feature selection to reduce sparsity
+        if is_training:
+            from sklearn.feature_selection import VarianceThreshold
+            print("Applying feature selection to reduce sparsity...")
+            original_feature_count = traditional_features.shape[1]
+            self.variance_selector = VarianceThreshold(threshold=0.01)  # Remove features with <1% variance
+            traditional_features = self.variance_selector.fit_transform(traditional_features)
+            print(f"Feature selection: reduced from {original_feature_count} to {traditional_features.shape[1]} features")
+        else:
+            if hasattr(self, 'variance_selector'):
+                traditional_features = self.variance_selector.transform(traditional_features)
         
         if is_training:
             ratings = np.array([d.get('user_rating', 0) for d in dramas])
@@ -621,7 +642,6 @@ class FeatureEngineer:
             return np.empty((len(dramas), 0))
         
         try:
-            print("Creating BERT features...")
             return self.bert_extractor.extract_features(dramas)
         except Exception as e:
             print(f"Error creating BERT features: {e}")
@@ -1144,8 +1164,8 @@ class FeatureEngineer:
         -------
         Tuple[List[str], List[str]]
             (traditional_feature_names, hybrid_feature_names) where:
-            - traditional_feature_names: Names for all traditional features
-            - hybrid_feature_names: Names for traditional + BERT features
+            - traditional_feature_names: Names for all traditional features (after feature selection)
+            - hybrid_feature_names: Names for traditional + BERT features (after feature selection)
             
         Raises
         ------
@@ -1162,29 +1182,40 @@ class FeatureEngineer:
         4. Semantic similarity features
         5. Numerical features
         6. BERT features (hybrid only)
+        
+        Feature selection is applied to traditional features, so only selected feature names are returned.
         """
         if not self.fitted:
             raise RuntimeError("Must fit the feature engineer before getting feature names.")
 
-        traditional_feature_names = []
+        # Generate full feature names first
+        full_traditional_feature_names = []
 
         # TF-IDF features
-        traditional_feature_names.extend(self._get_tfidf_feature_names())
+        full_traditional_feature_names.extend(self._get_tfidf_feature_names())
         
         # Categorical features
         if self._has_categorical_features_enabled():
-            traditional_feature_names.extend(self._get_categorical_feature_names())
+            full_traditional_feature_names.extend(self._get_categorical_feature_names())
 
         # Sentiment features
         if self.config.get('use_sentiment', True):
-            traditional_feature_names.extend(self.SENTIMENT_FEATURES)
+            full_traditional_feature_names.extend(self.SENTIMENT_FEATURES)
 
         # Semantic similarity features
-        traditional_feature_names.extend(self._get_semantic_feature_names())
+        full_traditional_feature_names.extend(self._get_semantic_feature_names())
 
         # Numerical features
         if self.config.get('use_numerical_features', True):
-            traditional_feature_names.extend(self.NUMERICAL_FEATURES)
+            full_traditional_feature_names.extend(self.NUMERICAL_FEATURES)
+
+        # Apply feature selection to feature names if variance selector was used
+        if hasattr(self, 'variance_selector') and self.variance_selector is not None:
+            # Get the mask of selected features
+            selected_mask = self.variance_selector.get_support()
+            traditional_feature_names = [name for i, name in enumerate(full_traditional_feature_names) if selected_mask[i]]
+        else:
+            traditional_feature_names = full_traditional_feature_names
 
         # Create hybrid feature names
         hybrid_feature_names = traditional_feature_names.copy()

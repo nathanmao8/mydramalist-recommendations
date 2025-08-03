@@ -52,9 +52,6 @@ class BertFeatureExtractor:
         for i, drama in enumerate(dramas):
             slug = drama.get('slug')
             
-            if i % 10 == 0:
-                print(f"Processing drama {i+1}/{len(dramas)}")
-
             # --- NEW: Check Cache First ---
             if slug and slug in self.embeddings_cache:
                 all_features.append(self.embeddings_cache[slug])

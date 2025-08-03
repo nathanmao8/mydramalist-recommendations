@@ -6,6 +6,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import argparse
 import pandas as pd
+import numpy as np
 
 # API Class
 class KuryanaAPI:
@@ -143,7 +144,7 @@ from feature_engineer import FeatureEngineer
 from model_trainer import ModelTrainer
 from predictor import Predictor
 from evaluator import Evaluator
-from interpretability import ShapExplainer
+
 
 def add_basic_arguments(parser):
     """
@@ -217,8 +218,8 @@ def add_advanced_arguments(parser):
     Notes
     -----
     Creates an advanced options group with semantic model selection,
-    TF-IDF feature limits, and BERT caching options. These settings
-    allow fine-tuning of computational performance and model behavior.
+    TF-IDF feature limits, BERT caching options, and validation method selection.
+    These settings allow fine-tuning of computational performance and model behavior.
     """
     advanced_group = parser.add_argument_group('Advanced Options', 'Advanced configuration settings')
     
@@ -229,6 +230,11 @@ def add_advanced_arguments(parser):
                                help='Maximum features for TF-IDF vectorization')
     advanced_group.add_argument('--bert-cache', action='store_true', default=True,
                                help='Use BERT embedding cache (recommended)')
+    advanced_group.add_argument('--validation-method', type=str, default='kfold',
+                               choices=['loocv', 'kfold'],
+                               help='Validation method: loocv (thorough) or kfold (faster, default)')
+    advanced_group.add_argument('--n-folds', type=int, default=10,
+                               help='Number of folds for k-fold validation (default: 10)')
 
 def parse_arguments():
     """
@@ -291,7 +297,7 @@ def create_feature_config(args):
         'use_type': args.use_type
     }
 
-def initialize_components(feature_config):
+def initialize_components(feature_config, validation_method='kfold', n_folds=10):
     """
     Initialize all system components with the given feature configuration.
     
@@ -299,6 +305,10 @@ def initialize_components(feature_config):
     ----------
     feature_config : dict
         Feature configuration dictionary containing all feature flags and settings
+    validation_method : str, optional
+        Cross-validation method: 'loocv' or 'kfold'. Default is 'kfold'.
+    n_folds : int, optional
+        Number of folds for k-fold cross-validation. Default is 10.
         
     Returns
     -------
@@ -310,13 +320,13 @@ def initialize_components(feature_config):
     -----
     Creates instances of all major system components in the correct order
     with proper configuration. The feature_config is only passed to
-    FeatureEngineer, while other components use default configurations.
+    FeatureEngineer, while ModelTrainer gets validation configuration.
     """
     api = KuryanaAPI()
     data_loader = DataLoader(api)
     text_processor = TextProcessor()
     feature_engineer = FeatureEngineer(feature_config)
-    model_trainer = ModelTrainer()
+    model_trainer = ModelTrainer(validation_method=validation_method, n_folds=n_folds)
     predictor = Predictor()
     evaluator = Evaluator()
     
@@ -348,10 +358,7 @@ def load_and_prepare_data(data_loader, user_id):
     """
     print("Loading drama data...")
     watched_dramas, unwatched_dramas = data_loader.load_all_drama_data(user_id=user_id)
-    
-    print(f"Loaded {len(watched_dramas)} watched dramas with ratings")
-    print(f"Loaded {len(unwatched_dramas)} unwatched dramas for prediction")
-    
+        
     return watched_dramas, unwatched_dramas
 
 def create_features(feature_engineer, text_processor, watched_dramas, unwatched_dramas):
@@ -454,7 +461,6 @@ def train_and_predict(model_trainer, predictor, X_traditional, X_hybrid, y_train
     Uses Leave-One-Out Cross-Validation (LOOCV) for model training and evaluation.
     Generates predictions using both traditional and hybrid model ensembles.
     """
-    print("Training all models with LOOCV...")
     trained_models, evaluation_results, loocv_predictions = model_trainer.train_models(
         X_traditional, X_hybrid, y_train
     )
@@ -468,7 +474,8 @@ def train_and_predict(model_trainer, predictor, X_traditional, X_hybrid, y_train
 
 def display_and_analyze_results(evaluator, evaluation_results, loocv_predictions, 
                                watched_dramas, feature_names_dict, trained_models, 
-                               X_traditional, X_hybrid, y_train, predictions_unwatched):
+                               X_traditional, X_hybrid, y_train, predictions_unwatched,
+                               validation_method='kfold'):
     """
     Display evaluation results and perform comprehensive model analysis.
     
@@ -502,48 +509,37 @@ def display_and_analyze_results(evaluator, evaluation_results, loocv_predictions
     potential dimension mismatch errors gracefully without stopping execution.
     """
     evaluator.display_results(evaluation_results)
-    evaluator.save_loocv_predictions(watched_dramas, loocv_predictions)
-
-    print("\nFeature Importances:")
-    evaluator.display_feature_importances(evaluation_results, feature_names_dict)
+    
+    # Only save LOOCV predictions if LOOCV validation was used
+    if validation_method == 'loocv':
+        evaluator.save_loocv_predictions(watched_dramas, loocv_predictions)
 
     print("\nPermutation Importance:")
     X_dict_for_eval = {'traditional': X_traditional, 'hybrid': X_hybrid}
     evaluator.display_permutation_importance(trained_models, X_dict_for_eval, y_train, feature_names_dict)
 
-    # Run SHAP Explainer with error handling
-    try:
-        X_df_dict_for_shap = {
-            'traditional': pd.DataFrame(X_traditional, columns=feature_names_dict['traditional']),
-            'hybrid': pd.DataFrame(X_hybrid, columns=feature_names_dict['hybrid'])
-        }
-        shap_explainer = ShapExplainer(trained_models, X_df_dict_for_shap, feature_names_dict)
-        shap_explainer.explain_models()
-    except ValueError as e:
-        print(f"\n⚠️  SHAP Analysis skipped due to dimension mismatch: {e}")
-        print("This is likely due to feature engineering differences between training and prediction.")
-        print("The predictions are still working correctly.")
-
 def display_top_predictions(predictions_unwatched):
     """
-    Display top 10 predictions from each model type.
+    Display top 10 predictions from each individual model.
     
     Parameters
     ----------
     predictions_unwatched : pd.DataFrame
         DataFrame containing predictions for unwatched dramas with columns:
-        Traditional_Ensemble, BERT_Ensemble, Final_Prediction, Drama_Title
+        RF_Traditional, SVM_Traditional, RF_BERT, SVM_BERT, Drama_Title
         
     Notes
     -----
-    Shows the highest-rated drama recommendations from traditional ensemble,
-    BERT ensemble, and final prediction models. Provides a quick overview
-    of model differences and top recommendations for the user.
+    Shows the highest-rated drama recommendations from each individual model:
+    - Random Forest on traditional features
+    - SVM on traditional features
+    - Random Forest on BERT features
+    - SVM on BERT features
     """
-    print("\nTop 10 Predictions by Model Type:")
+    print("\nTop 10 Predictions by Individual Model:")
     print("-" * 80)
     
-    prediction_columns = ['Traditional_Ensemble', 'BERT_Ensemble', 'Final_Prediction']
+    prediction_columns = ['RF_Traditional', 'SVM_Traditional', 'RF_BERT', 'SVM_BERT']
     
     for col in prediction_columns:
         print(f"\n{col}:")
@@ -574,6 +570,12 @@ def save_caches(feature_config, feature_engineer):
     if feature_config['use_semantic_similarity']:
         feature_engineer.semantic_extractor.save_cache()
 
+
+
+
+
+
+
 def main():
     """
     Main execution function for the drama rating prediction system.
@@ -601,7 +603,8 @@ def main():
 
     # Initialize all components
     (data_loader, text_processor, feature_engineer, 
-     model_trainer, predictor, evaluator) = initialize_components(feature_config)
+     model_trainer, predictor, evaluator) = initialize_components(
+        feature_config, args.validation_method, args.n_folds)
     
     # Load and prepare data
     watched_dramas, unwatched_dramas = load_and_prepare_data(data_loader, args.user_id)
@@ -627,11 +630,12 @@ def main():
     # Display and analyze results
     display_and_analyze_results(evaluator, evaluation_results, loocv_predictions,
                                watched_dramas, feature_names_dict, trained_models,
-                               X_traditional, X_hybrid, y_train, predictions_unwatched)
+                               X_traditional, X_hybrid, y_train, predictions_unwatched,
+                               args.validation_method)
     
     # Display top predictions
     display_top_predictions(predictions_unwatched)
-    
+
     # Save caches for future runs
     save_caches(feature_config, feature_engineer)
 

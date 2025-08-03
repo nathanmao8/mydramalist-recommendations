@@ -1036,7 +1036,6 @@ class DataLoader:
         
         # Load or create popular dramas cache
         popular_dramas = self._ensure_popular_cache_exists()
-        print(f"Loaded {len(popular_dramas)} popular dramas from cache")
         
         # Load non-popular watched cache
         non_popular_watched_cache = self.load_non_popular_watched_cache()

@@ -97,7 +97,8 @@ class TreeExplainer(ModelExplainer):
             If the TreeExplainer cannot be created for the given model.
         """
         try:
-            return shap.TreeExplainer(model)
+            # Use check_additivity=False to handle preprocessing differences
+            return shap.TreeExplainer(model, check_additivity=False)
         except Exception as e:
             raise ValueError(f"Failed to create TreeExplainer: {e}")
     
@@ -168,6 +169,66 @@ class LinearExplainer(ModelExplainer):
         ----------
         explainer : shap.LinearExplainer
             The LinearExplainer object.
+        X : pd.DataFrame
+            Feature data for which to calculate SHAP values.
+            
+        Returns
+        -------
+        np.ndarray
+            Array of SHAP values with shape (n_samples, n_features).
+            
+        Raises
+        ------
+        RuntimeError
+            If SHAP values cannot be calculated.
+        """
+        try:
+            return explainer.shap_values(X)
+        except Exception as e:
+            raise RuntimeError(f"Failed to calculate SHAP values: {e}")
+
+
+class KernelExplainer(ModelExplainer):
+    """Explainer for non-linear models using SHAP KernelExplainer."""
+    
+    def create_explainer(self, model: Any, X: Optional[pd.DataFrame] = None) -> shap.KernelExplainer:
+        """
+        Create a SHAP KernelExplainer for non-linear models like SVR.
+        
+        Parameters
+        ----------
+        model : Any
+            The trained non-linear model (e.g., SVR with non-linear kernel).
+        X : Optional[pd.DataFrame], default=None
+            Training data used to create background data for the explainer.
+            
+        Returns
+        -------
+        shap.KernelExplainer
+            Configured KernelExplainer for the model.
+            
+        Raises
+        ------
+        ValueError
+            If the KernelExplainer cannot be created for the given model.
+        """
+        try:
+            if X is None:
+                raise ValueError("Background data required for KernelExplainer")
+            
+            background = shap.sample(X, min(50, len(X)))
+            return shap.KernelExplainer(model.predict, background)
+        except Exception as e:
+            raise ValueError(f"Failed to create KernelExplainer: {e}")
+    
+    def calculate_shap_values(self, explainer: shap.KernelExplainer, X: pd.DataFrame) -> np.ndarray:
+        """
+        Calculate SHAP values using KernelExplainer.
+        
+        Parameters
+        ----------
+        explainer : shap.KernelExplainer
+            The KernelExplainer object.
         X : pd.DataFrame
             Feature data for which to calculate SHAP values.
             
@@ -558,8 +619,13 @@ class ShapExplainer:
         if any(indicator in model_name_lower for indicator in tree_indicators):
             return TreeExplainer()
         
+        # Skip SHAP for SVR models (too slow with many features)
+        if 'svr' in model_name_lower or (hasattr(model, 'kernel') and model.kernel != 'linear'):
+            logging.info(f"Skipping SHAP for {model_name} - using permutation importance instead")
+            return None
+        
         # Check for linear models
-        linear_indicators = ['linear', 'logistic', 'ridge', 'lasso', 'elastic']
+        linear_indicators = ['linear', 'logistic', 'ridge', 'lasso', 'elastic', 'svm']
         
         if any(indicator in model_name_lower for indicator in linear_indicators):
             return LinearExplainer()
@@ -578,6 +644,12 @@ class ShapExplainer:
         for model_name, model in self.models.items():
             try:
                 explainer_type = self._get_explainer_type(model_name, model)
+                
+                # Skip models that don't support SHAP
+                if explainer_type is None:
+                    logging.info(f"Skipping SHAP for {model_name} - not supported")
+                    continue
+                
                 # Get appropriate data for the model
                 data_key = self._get_data_key(model_name)
                 X_set = self.X_data[data_key]

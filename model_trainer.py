@@ -2,19 +2,20 @@
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import SVR
-from sklearn.model_selection import LeaveOneOut
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, precision_score, recall_score
+from sklearn.model_selection import LeaveOneOut, KFold
+
 from typing import Dict, List, Tuple
 import time
+import pandas as pd
 
 class ModelTrainer:
     """
-    ModelTrainer handles model training with Leave-One-Out Cross-Validation and bootstrap sampling.
+    ModelTrainer handles model training with cross-validation for ranking evaluation.
     
     Features:
     - Traditional and BERT-enhanced model training
-    - Leave-One-Out Cross-Validation for robust evaluation
-    - Bootstrap sampling for prediction stability
+    - K-Fold and Leave-One-Out Cross-Validation
+    - MAP and Precision@K ranking evaluation metrics
     - Comprehensive evaluation metrics
     - Configurable model parameters and training options
     
@@ -36,16 +37,24 @@ class ModelTrainer:
     }
     
     # Training configuration
-    DEFAULT_BOOTSTRAP_ITERATIONS = 100
-    DEFAULT_HIGH_RATING_THRESHOLD = 7.5
     PROGRESS_UPDATE_INTERVAL = 10  # Update progress every N folds
     
+    # Cross-validation configuration
+    DEFAULT_VALIDATION_METHOD = 'kfold'
+    DEFAULT_N_FOLDS = 10
+    RANDOM_STATE = 42
+    
+    # Ranking evaluation thresholds
+    RANKING_THRESHOLDS = ['top_10%', 'top_25%', 'top_33%']
+    
+    # MAP thresholds
+    MAP_THRESHOLDS = [0.1, 0.25, 0.33]  # 10%, 25%, 33%
+    
     # Metric names
-    REGRESSION_METRICS = ['RMSE', 'MAE', 'R2']
-    CLASSIFICATION_METRICS = ['Precision_7.5+', 'Recall_7.5+', 'MAE_High_Rated']
+    RANKING_METRICS = ['MAP_10%', 'MAP_25%', 'MAP_33%', 'Precision_at_10%', 'Precision_at_25%', 'Precision_at_33%']
     
     def __init__(self, rf_params: Dict = None, svm_params: Dict = None, 
-                 bootstrap_iterations: int = None, threshold: float = None):
+                 validation_method: str = None, n_folds: int = None):
         """
         Initialize ModelTrainer with configurable parameters.
         
@@ -57,19 +66,20 @@ class ModelTrainer:
         svm_params : Dict, optional
             Parameters for SVM models. Will be merged with DEFAULT_SVM_PARAMS.
             Default is None.
-        bootstrap_iterations : int, optional
-            Number of bootstrap iterations for prediction stability.
-            Default is DEFAULT_BOOTSTRAP_ITERATIONS (100).
-        threshold : float, optional
-            Rating threshold for high-rating classification tasks.
-            Default is DEFAULT_HIGH_RATING_THRESHOLD (7.5).
+
+        validation_method : str, optional
+            Cross-validation method: 'loocv' or 'kfold'.
+            Default is DEFAULT_VALIDATION_METHOD ('kfold').
+        n_folds : int, optional
+            Number of folds for k-fold cross-validation.
+            Default is DEFAULT_N_FOLDS (10).
         """
         
         # Configuration
         self.rf_params = {**self.DEFAULT_RF_PARAMS, **(rf_params or {})}
         self.svm_params = {**self.DEFAULT_SVM_PARAMS, **(svm_params or {})}
-        self.bootstrap_iterations = bootstrap_iterations or self.DEFAULT_BOOTSTRAP_ITERATIONS
-        self.threshold = threshold or self.DEFAULT_HIGH_RATING_THRESHOLD
+        self.validation_method = validation_method or self.DEFAULT_VALIDATION_METHOD
+        self.n_folds = n_folds or self.DEFAULT_N_FOLDS
         
         # Initialize models
         self._initialize_models()
@@ -95,11 +105,11 @@ class ModelTrainer:
     
     def train_models(self, X_traditional: np.ndarray, X_hybrid: np.ndarray, y: np.ndarray) -> Tuple[Dict, Dict, Dict]:
         """
-        Train both traditional and hybrid models with LOOCV and return LOOCV predictions.
+        Train both traditional and hybrid models using specified validation method.
         
-        Trains Random Forest and SVM models on both traditional features and 
-        BERT-enhanced features using Leave-One-Out Cross-Validation for robust
-        evaluation.
+        Dispatches to either LOOCV or K-Fold cross-validation based on 
+        the validation_method setting. Both methods focus on ranking evaluation
+        using Mean Average Precision (MAP) and Precision@K metrics.
         
         Parameters
         ----------
@@ -117,35 +127,89 @@ class ModelTrainer:
             'rf_traditional', 'svm_traditional', 'rf_bert', 'svm_bert'.
         all_results : Dict
             Comprehensive evaluation metrics for all models including
-            feature importances.
-        loocv_predictions : Dict
-            LOOCV predictions for all models with keys: 'true_ratings',
-            'rf_traditional_preds', 'svm_traditional_preds', 'rf_bert_preds',
-            'svm_bert_preds'.
+            MAP, Precision@K (10%, 25%, 33%), and feature importances.
+        cv_predictions : Dict
+            Cross-validation predictions for all models. Format depends
+            on validation method used.
             
         Notes
         -----
-        Models are trained using bootstrap sampling within LOOCV for
-        improved prediction stability.
+        Uses ranking-focused evaluation metrics optimized for recommendation systems:
+        - Mean Average Precision (MAP): Overall ranking quality
+        - Precision@K: Accuracy of top recommendations at 10%, 25%, and 33% thresholds
+        
+        Example
+        -------
+        >>> trainer = ModelTrainer(validation_method='kfold', n_folds=5)
+        >>> models, results, predictions = trainer.train_models(X_trad, X_bert, y)
+        >>> print(f"RF Traditional MAP: {results['RF_TRADITIONAL_MAP']:.3f}")
         """
+        if self.validation_method == 'loocv':
+            return self.train_models_loocv(X_traditional, X_hybrid, y)
+        elif self.validation_method == 'kfold':
+            return self.train_models_kfold(X_traditional, X_hybrid, y)
+        else:
+            raise ValueError(f"Unknown validation method: {self.validation_method}")
+    
+    def train_models_loocv(self, X_traditional: np.ndarray, X_hybrid: np.ndarray, y: np.ndarray) -> Tuple[Dict, Dict, Dict]:
         
         try:
-            print("Training traditional models...")
+            print("Training traditional models with LOOCV...")
+            print("Focusing on MAP and Precision@K metrics for recommendation ranking evaluation.")
             traditional_results, rf_trad_preds, svm_trad_preds, true_values = self.train_model_set(
                 X_traditional, y, 
                 self.rf_traditional, self.svm_traditional,
                 model_prefix="Traditional"
             )
             
-            print("Training BERT-enhanced models...")
+            print("Training BERT-enhanced models with LOOCV...")
             bert_results, rf_bert_preds, svm_bert_preds, _ = self.train_model_set(
                 X_hybrid, y,
                 self.rf_bert, self.svm_bert,
                 model_prefix="BERT"
             )
             
-            # Combine results
+            # Combine traditional results
             all_results = {**traditional_results, **bert_results}
+            
+            print("Calculating MAP and Precision@K evaluation metrics...")
+            
+            # Add ranking metrics for each model
+            model_predictions = {
+                'rf_traditional': rf_trad_preds,
+                'svm_traditional': svm_trad_preds,
+                'rf_bert': rf_bert_preds,
+                'svm_bert': svm_bert_preds
+            }
+            
+            for model_name, predictions in model_predictions.items():
+                actual = np.array(true_values)
+                predicted = np.array(predictions)
+                
+                # Calculate MAP and Precision@K metrics
+                ranking_metrics = self._calculate_map_and_precision_at_k(actual, predicted)
+                
+                # Store results with consistent naming
+                # Fix the key naming to match evaluator expectations
+                if model_name == 'rf_traditional':
+                    model_key = 'RF_Traditional'
+                elif model_name == 'svm_traditional':
+                    model_key = 'SVM_Traditional'
+                elif model_name == 'rf_bert':
+                    model_key = 'RF_BERT'
+                elif model_name == 'svm_bert':
+                    model_key = 'SVM_BERT'
+                else:
+                    model_key = model_name.upper().replace('_', '_')
+                
+                # Store MAP scores for different thresholds
+                for map_key, map_value in ranking_metrics['map_scores'].items():
+                    all_results[f'{model_key}_{map_key}'] = map_value
+                
+                # Store Precision@K scores
+                all_results[f'{model_key}_Precision_at_10%'] = ranking_metrics['precision_at_k']['top_10%']
+                all_results[f'{model_key}_Precision_at_25%'] = ranking_metrics['precision_at_k']['top_25%']
+                all_results[f'{model_key}_Precision_at_33%'] = ranking_metrics['precision_at_k']['top_33%']
             
             print("Capturing feature importances from Random Forest models...")
             feature_importances = {
@@ -166,12 +230,21 @@ class ModelTrainer:
             
             # Create a dictionary to hold all LOOCV predictions
             loocv_predictions = {
+                'validation_method': 'loocv',
                 'true_ratings': true_values,
                 'rf_traditional_preds': rf_trad_preds,
                 'svm_traditional_preds': svm_trad_preds,
                 'rf_bert_preds': rf_bert_preds,
-                'svm_bert_preds': svm_bert_preds
+                'svm_bert_preds': svm_bert_preds,
+                'ranking_focus': True
             }
+            
+            print("LOOCV evaluation completed. Mean Average Precision (MAP) scores:")
+            for model_name in ['RF_TRADITIONAL', 'SVM_TRADITIONAL', 'RF_BERT', 'SVM_BERT']:
+                map_10 = all_results.get(f'{model_name}_MAP_10%', 0)
+                map_25 = all_results.get(f'{model_name}_MAP_25%', 0)
+                map_33 = all_results.get(f'{model_name}_MAP_33%', 0)
+                print(f"  {model_name}: MAP@10%={map_10:.3f}, MAP@25%={map_25:.3f}, MAP@33%={map_33:.3f}")
 
             return trained_models, all_results, loocv_predictions
             
@@ -180,71 +253,280 @@ class ModelTrainer:
             # Return empty results in case of failure
             return {}, {}, {}
     
-    def _perform_bootstrap_prediction(self, X_train_fold: np.ndarray, y_train_fold: np.ndarray, 
-                                     X_test_fold: np.ndarray) -> Tuple[float, float]:
+    def train_models_kfold(self, X_traditional: np.ndarray, X_hybrid: np.ndarray, y: np.ndarray) -> Tuple[Dict, Dict, Dict]:
         """
-        Perform bootstrap sampling and prediction for a single fold.
+        Train both traditional and hybrid models using K-Fold cross-validation with ranking evaluation.
         
-        Creates multiple bootstrap samples from the training data, trains models
-        on each sample, and returns averaged predictions for improved stability.
+        Focuses on Mean Average Precision (MAP) and Precision@K metrics rather than 
+        absolute rating accuracy, optimized for recommendation system evaluation.
         
         Parameters
         ----------
-        X_train_fold : np.ndarray, shape (n_train_samples, n_features)
-            Training feature matrix for the current fold.
-        y_train_fold : np.ndarray, shape (n_train_samples,)
-            Training target values for the current fold.
-        X_test_fold : np.ndarray, shape (1, n_features)
-            Test feature vector for the current fold (single sample in LOOCV).
+        X_traditional : np.ndarray, shape (n_samples, n_traditional_features)
+            Traditional feature matrix.
+        X_hybrid : np.ndarray, shape (n_samples, n_hybrid_features)
+            BERT-enhanced feature matrix combining traditional and BERT features.
+        y : np.ndarray, shape (n_samples,)
+            Target rating values.
             
         Returns
         -------
-        rf_pred : float
-            Averaged Random Forest prediction across bootstrap samples.
-        svm_pred : float
-            Averaged SVM prediction across bootstrap samples.
+        trained_models : Dict
+            Dictionary containing all trained model instances trained on full dataset.
+        all_results : Dict
+            Comprehensive evaluation metrics focused on ranking performance.
+        kfold_predictions : Dict
+            K-fold predictions and ranking metrics for all models.
             
         Notes
         -----
-        Uses self.bootstrap_iterations to determine number of bootstrap samples.
-        Returns (0.0, 0.0) if an error occurs during prediction.
+        Uses ranking-focused evaluation metrics optimized for recommendation systems:
+        - Mean Average Precision (MAP): Overall ranking quality
+        - Precision@K: Accuracy of top recommendations at 10%, 25%, and 33% thresholds
         """
+        print(f"Training models with {self.n_folds}-Fold Cross-Validation...")
+        
         try:
-            bootstrap_rf_preds = []
-            bootstrap_svm_preds = []
+            # Initialize k-fold splitter
+            kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.RANDOM_STATE)
             
-            for _ in range(self.bootstrap_iterations):
-                # Bootstrap sample
-                n_samples = len(X_train_fold)
-                bootstrap_idx = np.random.choice(n_samples, n_samples, replace=True)
-                X_bootstrap = X_train_fold[bootstrap_idx]
-                y_bootstrap = y_train_fold[bootstrap_idx]
-                
-                # Train models on bootstrap sample
-                rf_temp = RandomForestRegressor(**self.rf_params)
-                svm_temp = SVR(**self.svm_params)
-                
-                rf_temp.fit(X_bootstrap, y_bootstrap)
-                svm_temp.fit(X_bootstrap, y_bootstrap)
-                
-                # Predict on test sample
-                bootstrap_rf_preds.append(rf_temp.predict(X_test_fold)[0])
-                bootstrap_svm_preds.append(svm_temp.predict(X_test_fold)[0])
+            # Initialize result collectors
+            model_results = {
+                'rf_traditional': {'actual': [], 'predicted': []},
+                'svm_traditional': {'actual': [], 'predicted': []},
+                'rf_bert': {'actual': [], 'predicted': []},
+                'svm_bert': {'actual': [], 'predicted': []}
+            }
             
-            # Return averaged bootstrap predictions
-            return np.mean(bootstrap_rf_preds), np.mean(bootstrap_svm_preds)
+            fold_count = 0
+            for train_idx, test_idx in kf.split(X_traditional):
+                fold_count += 1
+                if fold_count % self.PROGRESS_UPDATE_INTERVAL == 0:
+                    print(f"Processing fold {fold_count}/{self.n_folds}...")
+                
+                # Split data for traditional models
+                X_train_trad, X_test_trad = X_traditional[train_idx], X_traditional[test_idx]
+                X_train_bert, X_test_bert = X_hybrid[train_idx], X_hybrid[test_idx]
+                y_train, y_test = y[train_idx], y[test_idx]
+                
+                # Train and predict with traditional models
+                rf_trad = RandomForestRegressor(**self.rf_params)
+                svm_trad = SVR(**self.svm_params)
+                
+                rf_trad.fit(X_train_trad, y_train)
+                svm_trad.fit(X_train_trad, y_train)
+                
+                rf_trad_pred = rf_trad.predict(X_test_trad)
+                svm_trad_pred = svm_trad.predict(X_test_trad)
+                
+                # Train and predict with BERT models
+                rf_bert = RandomForestRegressor(**self.rf_params)
+                svm_bert = SVR(**self.svm_params)
+                
+                rf_bert.fit(X_train_bert, y_train)
+                svm_bert.fit(X_train_bert, y_train)
+                
+                rf_bert_pred = rf_bert.predict(X_test_bert)
+                svm_bert_pred = svm_bert.predict(X_test_bert)
+                
+                # Store results
+                model_results['rf_traditional']['actual'].extend(y_test)
+                model_results['rf_traditional']['predicted'].extend(rf_trad_pred)
+                model_results['svm_traditional']['actual'].extend(y_test)
+                model_results['svm_traditional']['predicted'].extend(svm_trad_pred)
+                model_results['rf_bert']['actual'].extend(y_test)
+                model_results['rf_bert']['predicted'].extend(rf_bert_pred)
+                model_results['svm_bert']['actual'].extend(y_test)
+                model_results['svm_bert']['predicted'].extend(svm_bert_pred)
+            
+            print("Calculating MAP and Precision@K evaluation metrics...")
+            
+            # Calculate ranking metrics for each model
+            all_results = {}
+            for model_name, results in model_results.items():
+                actual = np.array(results['actual'])
+                predicted = np.array(results['predicted'])
+                
+                # Calculate MAP and Precision@K metrics
+                ranking_metrics = self._calculate_map_and_precision_at_k(actual, predicted)
+                
+                # Store results with consistent naming
+                # Fix the key naming to match evaluator expectations
+                if model_name == 'rf_traditional':
+                    model_key = 'RF_Traditional'
+                elif model_name == 'svm_traditional':
+                    model_key = 'SVM_Traditional'
+                elif model_name == 'rf_bert':
+                    model_key = 'RF_BERT'
+                elif model_name == 'svm_bert':
+                    model_key = 'SVM_BERT'
+                else:
+                    model_key = model_name.upper().replace('_', '_')
+                
+                # Store MAP scores for different thresholds
+                for map_key, map_value in ranking_metrics['map_scores'].items():
+                    all_results[f'{model_key}_{map_key}'] = map_value
+                
+                # Store Precision@K scores
+                all_results[f'{model_key}_Precision_at_10%'] = ranking_metrics['precision_at_k']['top_10%']
+                all_results[f'{model_key}_Precision_at_25%'] = ranking_metrics['precision_at_k']['top_25%']
+                all_results[f'{model_key}_Precision_at_33%'] = ranking_metrics['precision_at_k']['top_33%']
+                
+
+            
+            # Train final models on full dataset
+            print("Training final models on full dataset...")
+            self._initialize_models()
+            
+            self.rf_traditional.fit(X_traditional, y)
+            self.svm_traditional.fit(X_traditional, y)
+            self.rf_bert.fit(X_hybrid, y)
+            self.svm_bert.fit(X_hybrid, y)
+            
+            # Capture feature importances
+            feature_importances = {
+                'rf_traditional': self.rf_traditional.feature_importances_,
+                'rf_bert': self.rf_bert.feature_importances_
+            }
+            all_results['feature_importances'] = feature_importances
+            
+            # Create model dictionary
+            trained_models = {
+                'rf_traditional': self.rf_traditional,
+                'svm_traditional': self.svm_traditional,
+                'rf_bert': self.rf_bert,
+                'svm_bert': self.svm_bert
+            }
+            
+            # Create k-fold predictions dictionary
+            kfold_predictions = {
+                'validation_method': 'kfold',
+                'n_folds': self.n_folds,
+                'model_results': model_results,
+                'ranking_focus': True
+            }
+            
+            return trained_models, all_results, kfold_predictions
             
         except Exception as e:
-            print(f"Error in bootstrap prediction: {e}")
-            # Return fallback predictions
-            return 0.0, 0.0
+            print(f"Error during K-Fold training: {e}")
+            return {}, {}, {}
+    
+    def _calculate_map_and_precision_at_k(self, actual_ratings: np.ndarray, predicted_ratings: np.ndarray) -> Dict:
+        """
+        Calculate Mean Average Precision (MAP) and Precision@K for recommendation ranking evaluation.
+        
+        Parameters
+        ----------
+        actual_ratings : np.ndarray
+            Actual rating values.
+        predicted_ratings : np.ndarray
+            Predicted rating values.
+            
+        Returns
+        -------
+        Dict
+            Dictionary with MAP scores at different thresholds and Precision@K metrics.
+        """
+        # Create dataframe with indices to track original positions
+        df = pd.DataFrame({
+            'actual_rating': actual_ratings,
+            'predicted_rating': predicted_ratings,
+            'index': range(len(actual_ratings))
+        })
+        
+        # Sort by predicted ratings (descending - highest predicted first)
+        df_predicted_rank = df.sort_values('predicted_rating', ascending=False).reset_index(drop=True)
+        
+        # Sort by actual ratings to identify truly good items (descending - highest actual first)
+        df_actual_rank = df.sort_values('actual_rating', ascending=False).reset_index(drop=True)
+        
+        # Calculate MAP at different thresholds
+        map_scores = {}
+        for threshold in self.MAP_THRESHOLDS:
+            map_score = self._calculate_mean_average_precision(df_predicted_rank, df_actual_rank, threshold)
+            map_scores[f'MAP_{int(threshold*100)}%'] = map_score
+        
+        # Calculate Precision@K for different thresholds
+        precision_at_k = {}
+        
+        for threshold in self.RANKING_THRESHOLDS:
+            if threshold == 'top_10%':
+                k = max(1, len(df) // 10)  # 10%
+            elif threshold == 'top_25%':
+                k = max(1, len(df) // 4)   # 25%
+            else:  # top_33%
+                k = max(1, len(df) // 3)   # 33%
+            
+            # Get top-k predicted items
+            top_k_predicted_indices = set(df_predicted_rank.head(k)['index'])
+            
+            # Get top-k actual items (ground truth)
+            top_k_actual_indices = set(df_actual_rank.head(k)['index'])
+            
+            # Calculate precision@k
+            intersection = top_k_predicted_indices.intersection(top_k_actual_indices)
+            precision_k = len(intersection) / k if k > 0 else 0
+            
+            precision_at_k[threshold] = precision_k
+        
+        return {
+            'map_scores': map_scores,
+            'precision_at_k': precision_at_k
+        }
+    
+    def _calculate_mean_average_precision(self, df_predicted_rank: pd.DataFrame, df_actual_rank: pd.DataFrame, threshold: float = 0.5) -> float:
+        """
+        Calculate Mean Average Precision (MAP) for ranking evaluation.
+        
+        Parameters
+        ----------
+        df_predicted_rank : pd.DataFrame
+            DataFrame sorted by predicted ratings (descending).
+        df_actual_rank : pd.DataFrame
+            DataFrame sorted by actual ratings (descending).
+        threshold : float, optional
+            Fraction of top items to consider as relevant (default: 0.5 for 50%).
+            
+        Returns
+        -------
+        float
+            Mean Average Precision score.
+        """
+        # Get the indices of top items according to actual ratings
+        # Consider top threshold% as relevant items for MAP calculation
+        n_relevant = max(1, int(len(df_actual_rank) * threshold))
+        relevant_indices = set(df_actual_rank.head(n_relevant)['index'])
+        
+        if len(relevant_indices) == 0:
+            return 0.0
+        
+        # Calculate average precision
+        relevant_found = 0
+        precision_sum = 0.0
+        
+        for rank, row in df_predicted_rank.iterrows():
+            item_index = row['index']
+            
+            if item_index in relevant_indices:
+                relevant_found += 1
+                precision_at_rank = relevant_found / (rank + 1)  # rank is 0-indexed
+                precision_sum += precision_at_rank
+        
+        # Average precision for this ranking
+        if relevant_found > 0:
+            return precision_sum / len(relevant_indices)
+        else:
+            return 0.0
+    
+
     
     def _perform_loocv(self, X: np.ndarray, y: np.ndarray, model_prefix: str) -> Tuple[List, List, List]:
         """
-        Perform Leave-One-Out Cross-Validation with bootstrap sampling.
+        Perform Leave-One-Out Cross-Validation.
         
         Iterates through all samples, using each as a test case while training
-        on the remaining samples with bootstrap sampling for stability.
+        on the remaining samples for ranking evaluation.
         
         Parameters
         ----------
@@ -285,10 +567,15 @@ class ModelTrainer:
                 X_train_fold, X_test_fold = X[train_idx], X[test_idx]
                 y_train_fold, y_test_fold = y[train_idx], y[test_idx]
                 
-                # Perform bootstrap prediction for this fold
-                rf_pred, svm_pred = self._perform_bootstrap_prediction(
-                    X_train_fold, y_train_fold, X_test_fold
-                )
+                # Train models on training fold and predict on test fold
+                rf_temp = RandomForestRegressor(**self.rf_params)
+                svm_temp = SVR(**self.svm_params)
+                
+                rf_temp.fit(X_train_fold, y_train_fold)
+                svm_temp.fit(X_train_fold, y_train_fold)
+                
+                rf_pred = rf_temp.predict(X_test_fold)[0]
+                svm_pred = svm_temp.predict(X_test_fold)[0]
                 
                 rf_predictions.append(rf_pred)
                 svm_predictions.append(svm_pred)
@@ -391,135 +678,11 @@ class ModelTrainer:
             # Return empty results in case of failure
             return {}, [], [], []
     
-    def _calculate_regression_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-        """
-        Calculate regression metrics (RMSE, MAE, R2).
-        
-        Computes standard regression evaluation metrics for predicted vs true values.
-        
-        Parameters
-        ----------
-        y_true : np.ndarray, shape (n_samples,)
-            True target values.
-        y_pred : np.ndarray, shape (n_samples,)
-            Predicted target values.
-            
-        Returns
-        -------
-        metrics : Dict[str, float]
-            Dictionary containing 'RMSE', 'MAE', and 'R2' metrics.
-            Returns infinite/negative infinite values if calculation fails.
-            
-        Notes
-        -----
-        RMSE: Root Mean Squared Error
-        MAE: Mean Absolute Error  
-        R2: Coefficient of Determination
-        """
-        try:
-            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-            mae = mean_absolute_error(y_true, y_pred)
-            r2 = r2_score(y_true, y_pred)
-            
-            return {
-                'RMSE': rmse,
-                'MAE': mae,
-                'R2': r2
-            }
-        except Exception as e:
-            print(f"Error calculating regression metrics: {e}")
-            return {'RMSE': float('inf'), 'MAE': float('inf'), 'R2': -float('inf')}
-    
-    def _calculate_classification_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-        """
-        Calculate classification metrics for high ratings.
-        
-        Converts the regression problem to binary classification using the
-        configured threshold and computes precision and recall for high ratings.
-        
-        Parameters
-        ----------
-        y_true : np.ndarray, shape (n_samples,)
-            True target values.
-        y_pred : np.ndarray, shape (n_samples,)
-            Predicted target values.
-            
-        Returns
-        -------
-        metrics : Dict[str, float]
-            Dictionary containing 'Precision_7.5+' and 'Recall_7.5+' metrics.
-            Returns 0.0 values if calculation fails.
-            
-        Notes
-        -----
-        Uses self.threshold to determine high vs low ratings.
-        Zero division is handled by returning 0.0 for precision/recall.
-        """
-        try:
-            # Convert to binary classification problem
-            y_true_binary = (y_true >= self.threshold).astype(int)
-            y_pred_binary = (y_pred >= self.threshold).astype(int)
-            
-            # Calculate precision and recall
-            precision_high = precision_score(y_true_binary, y_pred_binary, zero_division=0)
-            recall_high = recall_score(y_true_binary, y_pred_binary, zero_division=0)
-            
-            return {
-                'Precision_7.5+': precision_high,
-                'Recall_7.5+': recall_high
-            }
-        except Exception as e:
-            print(f"Error calculating classification metrics: {e}")
-            return {'Precision_7.5+': 0.0, 'Recall_7.5+': 0.0}
-    
-    def _calculate_high_rated_mae(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
-        """
-        Calculate MAE specifically for high-rated items.
-        
-        Filters predictions to include only items with true ratings above
-        the threshold and computes MAE on this subset.
-        
-        Parameters
-        ----------
-        y_true : np.ndarray, shape (n_samples,)
-            True target values.
-        y_pred : np.ndarray, shape (n_samples,)
-            Predicted target values.
-            
-        Returns
-        -------
-        mae_high : float
-            Mean Absolute Error for high-rated items only.
-            Returns 0.0 if no high-rated items exist or if calculation fails.
-            
-        Notes
-        -----
-        Uses self.threshold to determine high-rated items.
-        This metric helps evaluate performance specifically on highly-rated content.
-        """
-        try:
-            # Create mask for high-rated items
-            high_rated_mask = (y_true >= self.threshold)
-            
-            # Apply mask to get high-rated subset
-            y_true_high_rated = y_true[high_rated_mask]
-            y_pred_high_rated = y_pred[high_rated_mask]
-            
-            # Calculate MAE on filtered subset
-            if len(y_true_high_rated) > 0:
-                return mean_absolute_error(y_true_high_rated, y_pred_high_rated)
-            else:
-                return 0.0
-        except Exception as e:
-            print(f"Error calculating high-rated MAE: {e}")
-            return 0.0
-    
     def _calculate_single_model_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, model_name: str) -> Dict[str, float]:
         """
         Calculate all metrics for a single model.
         
-        Computes comprehensive evaluation metrics including regression metrics,
-        classification metrics, and high-rated MAE for a single model.
+        Computes ranking evaluation metrics for a single model.
         
         Parameters
         ----------
@@ -534,29 +697,27 @@ class ModelTrainer:
         -------
         metrics : Dict[str, float]
             Dictionary containing all metrics with model_name prefixed keys:
-            - {model_name}_RMSE, _MAE, _R2
-            - {model_name}_Precision_7.5+, _Recall_7.5+
-            - {model_name}_MAE_High_Rated
+            - {model_name}_MAP, _Precision_at_10%, _Precision_at_25%, _Precision_at_33%
             
         Notes
         -----
-        Combines results from regression, classification, and high-rated metrics.
+        Focuses on ranking metrics optimized for recommendation systems.
         """
         metrics = {}
         
-        # Regression metrics
-        regression_metrics = self._calculate_regression_metrics(y_true, y_pred)
-        for metric_name, value in regression_metrics.items():
-            metrics[f'{model_name}_{metric_name}'] = value
-        
-        # Classification metrics
-        classification_metrics = self._calculate_classification_metrics(y_true, y_pred)
-        for metric_name, value in classification_metrics.items():
-            metrics[f'{model_name}_{metric_name}'] = value
-        
-        # High-rated MAE
-        mae_high = self._calculate_high_rated_mae(y_true, y_pred)
-        metrics[f'{model_name}_MAE_High_Rated'] = mae_high
+        # Ranking metrics
+        ranking_metrics = self._calculate_map_and_precision_at_k(y_true, y_pred)
+        for metric_name, value in ranking_metrics.items():
+            if metric_name == 'map':
+                metrics[f'{model_name}_MAP'] = value
+            elif metric_name == 'precision_at_k':
+                for threshold, precision in value.items():
+                    if threshold == 'top_10%':
+                        metrics[f'{model_name}_Precision_at_10%'] = precision
+                    elif threshold == 'top_25%':
+                        metrics[f'{model_name}_Precision_at_25%'] = precision
+                    elif threshold == 'top_33%':
+                        metrics[f'{model_name}_Precision_at_33%'] = precision
         
         return metrics
 
@@ -585,7 +746,7 @@ class ModelTrainer:
         -------
         metrics : Dict[str, float]
             Combined metrics dictionary for both models including:
-            - All regression and classification metrics for both models
+            - All regression and ranking metrics for both models
             - Training time split between models
             Returns empty dict if calculation fails.
             
@@ -628,11 +789,10 @@ class ModelTrainer:
             Dictionary containing all current configuration parameters:
             - rf_params: Random Forest parameters
             - svm_params: SVM parameters  
-            - bootstrap_iterations: Number of bootstrap samples
-            - threshold: High rating threshold
+            - validation_method: Cross-validation method
+            - n_folds: Number of folds for k-fold validation
             - progress_update_interval: Progress reporting frequency
-            - regression_metrics: List of regression metric names
-            - classification_metrics: List of classification metric names
+            - ranking_metrics: List of ranking metric names
             
         Notes
         -----
@@ -641,11 +801,10 @@ class ModelTrainer:
         return {
             'rf_params': self.rf_params.copy(),
             'svm_params': self.svm_params.copy(),
-            'bootstrap_iterations': self.bootstrap_iterations,
-            'threshold': self.threshold,
+            'validation_method': self.validation_method,
+            'n_folds': self.n_folds,
             'progress_update_interval': self.PROGRESS_UPDATE_INTERVAL,
-            'regression_metrics': self.REGRESSION_METRICS,
-            'classification_metrics': self.CLASSIFICATION_METRICS
+            'ranking_metrics': self.RANKING_METRICS
         }
     
     def update_configuration(self, **kwargs):
@@ -661,8 +820,8 @@ class ModelTrainer:
             Configuration parameters to update. Supported keys:
             - rf_params (Dict): Random Forest parameters
             - svm_params (Dict): SVM parameters
-            - bootstrap_iterations (int): Number of bootstrap samples
-            - threshold (float): High rating threshold
+            - validation_method (str): Cross-validation method
+            - n_folds (int): Number of folds for k-fold validation
             
         Notes
         -----
@@ -679,11 +838,13 @@ class ModelTrainer:
             self.svm_params = {**self.DEFAULT_SVM_PARAMS, **kwargs['svm_params']}
             model_params_changed = True
             
-        if 'bootstrap_iterations' in kwargs:
-            self.bootstrap_iterations = kwargs['bootstrap_iterations']
+        if 'validation_method' in kwargs:
+            self.validation_method = kwargs['validation_method']
             
-        if 'threshold' in kwargs:
-            self.threshold = kwargs['threshold']
+        if 'n_folds' in kwargs:
+            self.n_folds = kwargs['n_folds']
+            
+
         
         # Reinitialize models if parameters changed
         if model_params_changed:
@@ -746,7 +907,7 @@ class ModelTrainer:
             
         Notes
         -----
-        Checks bootstrap iterations, threshold values, RF parameters,
+        Checks validation method, n_folds, threshold values, RF parameters,
         and reproducibility settings. Critical errors set is_valid to False.
         """
         validation_results = {
@@ -756,22 +917,20 @@ class ModelTrainer:
             'recommendations': []
         }
         
-        # Check bootstrap iterations
-        if self.bootstrap_iterations < 10:
-            validation_results['warnings'].append(
-                f"Bootstrap iterations ({self.bootstrap_iterations}) is quite low - consider increasing for better stability"
-            )
-        elif self.bootstrap_iterations > 500:
-            validation_results['warnings'].append(
-                f"Bootstrap iterations ({self.bootstrap_iterations}) is very high - this may lead to long training times"
-            )
-        
-        # Check threshold value
-        if not 1.0 <= self.threshold <= 10.0:
+        # Check validation method
+        if self.validation_method not in ['loocv', 'kfold']:
             validation_results['errors'].append(
-                f"Threshold ({self.threshold}) should be between 1.0 and 10.0 for rating prediction"
+                f"Invalid validation method: {self.validation_method}. Must be 'loocv' or 'kfold'"
             )
             validation_results['is_valid'] = False
+        
+        # Check n_folds for k-fold validation
+        if self.validation_method == 'kfold' and (self.n_folds < 2 or self.n_folds > 50):
+            validation_results['warnings'].append(
+                f"Number of folds ({self.n_folds}) is outside recommended range (2-50)"
+            )
+        
+
         
         # Check Random Forest parameters
         if self.rf_params.get('n_estimators', 0) < 10:
@@ -832,7 +991,7 @@ class ModelTrainer:
                         stats['models_trained'].append(model_name)
             
             # Calculate metric summaries
-            for metric in self.REGRESSION_METRICS + self.CLASSIFICATION_METRICS + ['MAE_High_Rated']:
+            for metric in self.RANKING_METRICS:
                 metric_values = []
                 for key, value in evaluation_results.items():
                     if metric in key and not key.endswith('_TrainingTime'):
@@ -847,21 +1006,21 @@ class ModelTrainer:
                     }
             
             # Performance comparison between traditional and BERT models
-            traditional_rmse = []
-            bert_rmse = []
+            traditional_map = []
+            bert_map = []
             
             for key, value in evaluation_results.items():
-                if 'RMSE' in key:
+                if 'MAP' in key:
                     if 'Traditional' in key:
-                        traditional_rmse.append(value)
+                        traditional_map.append(value)
                     elif 'BERT' in key:
-                        bert_rmse.append(value)
+                        bert_map.append(value)
             
-            if traditional_rmse and bert_rmse:
+            if traditional_map and bert_map:
                 stats['performance_comparison'] = {
-                    'traditional_avg_rmse': np.mean(traditional_rmse),
-                    'bert_avg_rmse': np.mean(bert_rmse),
-                    'bert_improvement': (np.mean(traditional_rmse) - np.mean(bert_rmse)) / np.mean(traditional_rmse) * 100
+                    'traditional_avg_map': np.mean(traditional_map),
+                    'bert_avg_map': np.mean(bert_map),
+                    'bert_improvement': (np.mean(bert_map) - np.mean(traditional_map)) / np.mean(traditional_map) * 100
                 }
             
             return stats
