@@ -164,17 +164,22 @@ class DataLoader:
         -------
         Tuple[Dict, Set[str]]
             Tuple containing:
-            - watchlist_data: Dict, complete watchlist data from API
+            - watchlist_data: Dict, complete watchlist data from API (None if user doesn't exist)
             - watched_slugs: Set[str], set of drama slugs from completed items
             
         Notes
         -----
         Only processes items from the 'Completed' section of the user's 
-        drama list. Returns empty dict and set if API call fails.
+        drama list. Returns None for watchlist_data if user doesn't exist,
+        empty dict and set if API call fails for other reasons.
         """
         try:
             watchlist_data = self.api.get_user_dramalist(user_id)
             watched_slugs = set()
+            
+            # If API returns None, it means the user doesn't exist (404 error)
+            if watchlist_data is None:
+                return None, set()
             
             if watchlist_data and watchlist_data.get('data'):
                 # Access the 'list' within data, then 'Completed' items

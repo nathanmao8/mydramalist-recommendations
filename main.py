@@ -358,6 +358,28 @@ def load_and_prepare_data(data_loader, user_id):
     Prints summary statistics about the loaded data.
     """
     print("Loading drama data...")
+    
+    # First, check if the user exists by attempting to load their watchlist
+    watchlist_data, watched_slugs = data_loader.load_user_watchlist(user_id)
+    
+    # Check if user exists (API returned None for watchlist_data)
+    if watchlist_data is None:
+        print(f"\n❌ Error: User '{user_id}' does not exist on MyDramaList.")
+        print("Please check the user ID and try again.")
+        print("You can find your user ID in your MyDramaList profile URL.")
+        exit(1)
+    
+    # Check if user has any completed dramas with ratings
+    if not watched_slugs:
+        print(f"\n⚠️  Warning: User '{user_id}' has no completed dramas with ratings.")
+        print("To get personalized recommendations, you need to:")
+        print("1. Add dramas to your 'Completed' list on MyDramaList")
+        print("2. Rate the dramas you've completed")
+        print("3. Run this script again")
+        print("\nWithout any rated dramas, the system cannot learn your preferences.")
+        exit(1)
+    
+    # If user exists and has rated dramas, proceed with full data loading
     watched_dramas, unwatched_dramas = data_loader.load_all_drama_data(user_id=user_id)
         
     return watched_dramas, unwatched_dramas
