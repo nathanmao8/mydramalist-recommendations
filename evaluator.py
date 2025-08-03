@@ -1,7 +1,6 @@
 # evaluator.py
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
-from pathlib import Path
 import pandas as pd
 from sklearn.inspection import permutation_importance
 import numpy as np

@@ -7,6 +7,7 @@ warnings.filterwarnings('ignore')
 import argparse
 import pandas as pd
 import numpy as np
+import time
 
 # API Class
 class KuryanaAPI:
@@ -504,9 +505,7 @@ def display_and_analyze_results(evaluator, evaluation_results, loocv_predictions
         
     Notes
     -----
-    Displays model performance metrics, feature importances, permutation importance,
-    and attempts SHAP analysis. SHAP analysis is wrapped in try-catch to handle
-    potential dimension mismatch errors gracefully without stopping execution.
+    Displays model performance metrics, feature importances, and permutation importance.
     """
     evaluator.display_results(evaluation_results)
     
@@ -598,6 +597,8 @@ def main():
     The function handles all coordination between components and provides
     user feedback throughout the process.
     """
+    start_time = time.time()
+    
     args = parse_arguments()
     feature_config = create_feature_config(args)
 
@@ -638,6 +639,12 @@ def main():
 
     # Save caches for future runs
     save_caches(feature_config, feature_engineer)
+    
+    # Display total runtime
+    total_time = time.time() - start_time
+    print(f"\n" + "="*80)
+    print(f"Total Runtime: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
+    print("="*80)
 
 if __name__ == "__main__":
     main()

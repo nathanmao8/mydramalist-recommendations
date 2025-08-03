@@ -128,13 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Project-specific files
-*.json
-!requirements.txt
-!package.json
-!tsconfig.json
-
-# Cache files
+# Project-specific cache files
 bert_embeddings_cache.json
 semantic_embeddings_cache.json
 watched_non_popular_cache.json

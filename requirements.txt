@@ -2,12 +2,10 @@
 numpy>=1.19.5
 pandas>=1.1.5
 scikit-learn>=1.0.0
-scipy>=1.6.0
 
 # Deep learning and transformers
 torch>=1.9.0
 transformers>=4.16.0
-tokenizers>=0.13.0
 sentence-transformers>=2.2.0
 
 # Text processing and sentiment analysis
@@ -18,19 +16,5 @@ textblob>=0.17.1
 requests>=2.25.1
 beautifulsoup4>=4.9.3
 
-# Data visualization
-matplotlib>=3.3.4
-seaborn>=0.11.0
-
-# Model interpretability
-shap>=0.41.0
-
 # Utilities
-tqdm>=4.62.0
 argparse
-
-# Optional: GPU acceleration
-accelerate>=0.5.1
-
-# Additional dependencies for advanced features
-pickle5>=0.0.11
