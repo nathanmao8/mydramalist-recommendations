@@ -1,10 +1,14 @@
-# feature_engineer.py
+import os
 import numpy as np
-import math
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from typing import Dict, List, Tuple
+import warnings
+warnings.filterwarnings('ignore')
+import math
 from sklearn.preprocessing import MultiLabelBinarizer, StandardScaler
-from typing import List, Dict, Tuple
 from bert_extractor import BertFeatureExtractor
+
 
 class FeatureEngineer:
     """

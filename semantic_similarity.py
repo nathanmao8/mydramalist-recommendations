@@ -1,9 +1,9 @@
+import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List, Dict, Tuple
 import json
-import os
 
 class SemanticSimilarityExtractor:
     def __init__(self, model_name='all-MiniLM-L6-v2', cache_path='semantic_embeddings_cache.json'):

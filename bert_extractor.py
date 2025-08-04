@@ -1,4 +1,3 @@
-# bert_extractor.py
 import os
 import json
 import torch

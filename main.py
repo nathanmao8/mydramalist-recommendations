@@ -5,8 +5,6 @@ from typing import Dict, Optional
 import warnings
 warnings.filterwarnings('ignore')
 import argparse
-import pandas as pd
-import numpy as np
 import time
 
 # API Class
@@ -236,6 +234,19 @@ def add_advanced_arguments(parser):
                                help='Validation method: loocv (thorough) or kfold (faster, default)')
     advanced_group.add_argument('--n-folds', type=int, default=10,
                                help='Number of folds for k-fold validation (default: 10)')
+    
+    # Performance optimization arguments
+    performance_group = parser.add_argument_group('Performance Options', 'Data loading and processing optimizations')
+    performance_group.add_argument('--parallel-loading', action='store_true', default=True,
+                                  help='Enable parallel processing for non-popular drama loading (recommended)')
+    performance_group.add_argument('--no-parallel-loading', action='store_true', default=False,
+                                  help='Disable parallel processing for maximum safety (use if concerned about bot detection)')
+    performance_group.add_argument('--max-workers', type=int, default=5,
+                                  help='Maximum number of parallel workers for API calls')
+    performance_group.add_argument('--batch-size', type=int, default=20,
+                                  help='Number of dramas to process in each batch')
+    performance_group.add_argument('--api-delay', type=float, default=0.1,
+                                  help='Delay between API calls in seconds for parallel processing')
 
 def parse_arguments():
     """
@@ -298,7 +309,8 @@ def create_feature_config(args):
         'use_type': args.use_type
     }
 
-def initialize_components(feature_config, validation_method='kfold', n_folds=10):
+def initialize_components(feature_config, validation_method='kfold', n_folds=10, 
+                        parallel_loading=True, max_workers=2, batch_size=5, api_delay=0.8):
     """
     Initialize all system components with the given feature configuration.
     
@@ -310,6 +322,14 @@ def initialize_components(feature_config, validation_method='kfold', n_folds=10)
         Cross-validation method: 'loocv' or 'kfold'. Default is 'kfold'.
     n_folds : int, optional
         Number of folds for k-fold cross-validation. Default is 10.
+    parallel_loading : bool, optional
+        Whether to enable parallel processing for non-popular drama loading. Default is True.
+    max_workers : int, optional
+        Maximum number of parallel workers for API calls. Default is 2 (conservative).
+    batch_size : int, optional
+        Number of dramas to process in each batch. Default is 5 (conservative).
+    api_delay : float, optional
+        Delay between API calls in seconds for parallel processing. Default is 0.8 (conservative).
         
     Returns
     -------
@@ -324,7 +344,9 @@ def initialize_components(feature_config, validation_method='kfold', n_folds=10)
     FeatureEngineer, while ModelTrainer gets validation configuration.
     """
     api = KuryanaAPI()
-    data_loader = DataLoader(api)
+    data_loader = DataLoader(api, parallel_loading=parallel_loading, 
+                           max_workers=max_workers, batch_size=batch_size, 
+                           api_delay=api_delay)
     text_processor = TextProcessor()
     feature_engineer = FeatureEngineer(feature_config)
     model_trainer = ModelTrainer(validation_method=validation_method, n_folds=n_folds)
@@ -591,6 +613,57 @@ def save_caches(feature_config, feature_engineer):
     if feature_config['use_semantic_similarity']:
         feature_engineer.semantic_extractor.save_cache()
 
+def validate_data_requirements(watched_dramas, validation_method='kfold', n_folds=10):
+    """
+    Validate that there's enough data for meaningful model training.
+    
+    Parameters
+    ----------
+    watched_dramas : list
+        List of watched drama dictionaries with ratings
+    validation_method : str
+        Cross-validation method being used
+    n_folds : int
+        Number of folds for k-fold validation
+        
+    Returns
+    -------
+    tuple
+        (is_sufficient, message, adjusted_config)
+        - is_sufficient: bool, whether there's enough data
+        - message: str, explanation message for user
+        - adjusted_config: dict, adjusted configuration for small datasets
+    """
+    num_dramas = len(watched_dramas)
+    
+    adjusted_config = {
+        'validation_method': validation_method,
+        'n_folds': n_folds
+    }
+    
+    if num_dramas < 10:
+        message = f"❌ Insufficient data: You have only {num_dramas} rated dramas. Need at least 10 dramas to make predictions."
+        return False, message, adjusted_config
+    
+    elif num_dramas < 20:
+        # For medium datasets, use LOOCV
+        adjusted_config['validation_method'] = 'loocv'
+        adjusted_config['n_folds'] = num_dramas
+        
+        message = f"⚠️  Small dataset detected: {num_dramas} rated dramas. "
+        message += "Using Leave-One-Out Cross-Validation for better evaluation. "
+        message += f"Consider rating more dramas (aim for 20+) for optimal recommendations."
+        
+        return True, message, adjusted_config
+    
+    else:
+        # For large datasets, use k-fold
+        adjusted_config['validation_method'] = 'kfold'
+        adjusted_config['n_folds'] = min(n_folds, num_dramas // 2)  # Ensure n_folds < num_dramas
+        
+        message = f"✅ Sufficient data: {num_dramas} rated dramas for training."
+        return True, message, adjusted_config
+
 
 
 
@@ -625,12 +698,36 @@ def main():
     feature_config = create_feature_config(args)
 
     # Initialize all components
+    # Handle parallel loading flag
+    if args.no_parallel_loading:
+        parallel_loading = False
+    else:
+        parallel_loading = args.parallel_loading
+    
     (data_loader, text_processor, feature_engineer, 
      model_trainer, predictor, evaluator) = initialize_components(
-        feature_config, args.validation_method, args.n_folds)
+        feature_config, args.validation_method, args.n_folds,
+        parallel_loading, args.max_workers, args.batch_size, args.api_delay)
     
     # Load and prepare data
     watched_dramas, unwatched_dramas = load_and_prepare_data(data_loader, args.user_id)
+    
+    # Validate data requirements and adjust configuration if needed
+    is_sufficient, message, adjusted_config = validate_data_requirements(
+        watched_dramas, args.validation_method, args.n_folds
+    )
+    
+    print(f"\n{message}")
+    
+    if not is_sufficient:
+        print("\nPlease rate more dramas on MyDramaList and try again.")
+        exit(1)
+    
+    # Update validation method if adjusted
+    if adjusted_config['validation_method'] != args.validation_method:
+        model_trainer.validation_method = adjusted_config['validation_method']
+        model_trainer.n_folds = adjusted_config['n_folds']
+        print(f"Adjusted validation method to: {adjusted_config['validation_method']}")
     
     # Create features for training and prediction
     (X_traditional, X_hybrid, y_train, 
@@ -644,6 +741,20 @@ def main():
         model_trainer, predictor, X_traditional, X_hybrid, y_train,
         X_predict_traditional, X_predict_hybrid, unwatched_dramas
     )
+    
+    # Validate that models trained successfully
+    model_validation = model_trainer.validate_trained_models()
+    valid_models = sum(model_validation.values())
+    total_models = len(model_validation)
+    
+    if valid_models < total_models:
+        print(f"\n⚠️  Warning: Only {valid_models}/{total_models} models trained successfully.")
+        print("Some predictions may be unreliable. Consider rating more dramas for better results.")
+    
+    if valid_models == 0:
+        print("\n❌ Error: No models trained successfully. Cannot generate predictions.")
+        print("This may be due to insufficient data or feature issues.")
+        exit(1)
     
     # Save predictions to file
     print("Saving results...")

@@ -1,9 +1,12 @@
 import os
 import json
-from bs4 import BeautifulSoup
-from typing import Dict, List, Tuple, Set
 import time
 import random
+import concurrent.futures
+from typing import Dict, List, Tuple, Set
+import warnings
+warnings.filterwarnings('ignore')
+from bs4 import BeautifulSoup
 
 class DataLoader:
     """
@@ -15,6 +18,7 @@ class DataLoader:
     - Handles API rate limiting with automatic retries
     - Processes drama metadata, cast, crew, and reviews
     - Manages user watchlist data and ratings
+    - Parallel processing for non-popular drama loading
     
     Cache Strategy:
     - Popular dramas: Single large cache file for 1000+ popular dramas
@@ -35,14 +39,26 @@ class DataLoader:
     RETRY_DELAY_MAX = 3  # Maximum delay for exponential backoff
     RETRY_ROUND_DELAY = 30  # Delay between retry rounds in seconds
     
-    def __init__(self, api):
+    # Anti-bot detection safety configuration
+    JITTER_RANGE = 0.3  # Add randomization to delays
+    BATCH_DELAY = 2.0  # Delay between batches for safety
+    
+    def __init__(self, api, parallel_loading=True, max_workers=2, batch_size=5, api_delay=0.8):
         """
-        Initialize the DataLoader with API instance.
+        Initialize the DataLoader with API instance and performance configuration.
 
         Parameters
         ----------
         api : object
             API client instance for making requests to MyDramaList API
+        parallel_loading : bool, optional
+            Whether to enable parallel processing for non-popular drama loading. Default is True.
+        max_workers : int, optional
+            Maximum number of parallel workers for API calls. Default is 2 (conservative).
+        batch_size : int, optional
+            Number of dramas to process in each batch. Default is 5 (conservative).
+        api_delay : float, optional
+            Delay between API calls in seconds for parallel processing. Default is 0.8 (conservative).
             
         Returns
         -------
@@ -52,6 +68,12 @@ class DataLoader:
         self.cache_file = self.POPULAR_CACHE_FILE
         self.non_popular_cache_file = self.NON_POPULAR_CACHE_FILE
         self.failed_dramas_file = self.FAILED_DRAMAS_FILE
+        
+        # Performance configuration
+        self.parallel_loading = parallel_loading
+        self.max_workers = max_workers
+        self.batch_size = batch_size
+        self.rate_limit_delay = api_delay
 
     def get_cache_status(self) -> Dict[str, any]:
         """
@@ -231,6 +253,134 @@ class DataLoader:
         except Exception as e:
             print(f"Error loading drama details for {slug}: {e}")
             raise
+
+    def _load_drama_details_parallel(self, slug: str) -> Tuple[str, Dict]:
+        """
+        Load drama details for parallel processing with rate limiting and randomization.
+        
+        Parameters
+        ----------
+        slug : str
+            Drama slug identifier for API requests
+            
+        Returns
+        -------
+        Tuple[str, Dict]
+            Tuple containing slug and drama details, or slug and None if failed
+        """
+        try:
+            # Add randomized delay for anti-bot detection safety
+            base_delay = self.rate_limit_delay
+            jitter = random.uniform(0, self.JITTER_RANGE)
+            actual_delay = max(0.1, base_delay + jitter)  # Ensure minimum 0.1s delay
+            
+            time.sleep(actual_delay)
+            
+            drama_details = self.load_drama_details(slug)
+            return slug, drama_details
+        except Exception as e:
+            print(f"Failed to load drama details for {slug}: {e}")
+            return slug, None
+
+    def _process_drama_batch_parallel(self, slugs: List[str], text_processor) -> Tuple[Dict, List]:
+        """
+        Process a batch of drama slugs in parallel for improved performance.
+        
+        Parameters
+        ----------
+        slugs : List[str]
+            List of drama slugs to process
+        text_processor : object
+            TextProcessor instance for text cleaning and analysis
+            
+        Returns
+        -------
+        Tuple[Dict, List]
+            Tuple containing:
+            - processed_dramas: Dict[str, Dict], successfully processed dramas
+            - failed_dramas: List[str], slugs that failed to process
+            
+        Notes
+        -----
+        Uses ThreadPoolExecutor for parallel API calls while maintaining
+        rate limiting to avoid overwhelming the server.
+        """
+        processed_dramas = {}
+        failed_dramas = []
+        
+        print(f"Processing {len(slugs)} dramas in parallel...")
+        
+        # Use ThreadPoolExecutor for parallel API calls
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all drama loading tasks
+            future_to_slug = {
+                executor.submit(self._load_drama_details_parallel, slug): slug 
+                for slug in slugs
+            }
+            
+            # Process completed tasks
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_slug), 1):
+                slug, drama_details = future.result()
+                
+                print(f"Processed {i}/{len(slugs)}: {slug}")
+                
+                if drama_details:
+                    try:
+                        processed_drama = self.extract_and_clean_drama_features(drama_details, text_processor)
+                        if processed_drama:
+                            processed_dramas[slug] = processed_drama
+                        else:
+                            failed_dramas.append(slug)
+                    except Exception as e:
+                        print(f"Failed to process features for {slug}: {e}")
+                        failed_dramas.append(slug)
+                else:
+                    failed_dramas.append(slug)
+        
+        return processed_dramas, failed_dramas
+
+    def _process_dramas_in_batches(self, slugs: List[str], text_processor) -> Tuple[Dict, List]:
+        """
+        Process dramas in batches using parallel processing for optimal performance.
+        
+        Parameters
+        ----------
+        slugs : List[str]
+            List of drama slugs to process
+        text_processor : object
+            TextProcessor instance for text cleaning and analysis
+            
+        Returns
+        -------
+        Tuple[Dict, List]
+            Tuple containing:
+            - processed_dramas: Dict[str, Dict], successfully processed dramas
+            - failed_dramas: List[str], slugs that failed to process
+            
+        Notes
+        -----
+        Splits large lists into smaller batches to avoid overwhelming the API
+        while still maintaining parallel processing benefits. Uses conservative
+        delays to avoid triggering anti-bot detection.
+        """
+        processed_dramas = {}
+        failed_dramas = []
+        
+        # Process in batches
+        for i in range(0, len(slugs), self.batch_size):
+            batch = slugs[i:i + self.batch_size]
+            print(f"\nProcessing batch {i//self.batch_size + 1}/{(len(slugs) + self.batch_size - 1)//self.batch_size}")
+            
+            batch_processed, batch_failed = self._process_drama_batch_parallel(batch, text_processor)
+            
+            processed_dramas.update(batch_processed)
+            failed_dramas.extend(batch_failed)
+            
+            # Longer delay between batches to be respectful to the API and avoid detection
+            if i + self.batch_size < len(slugs):
+                time.sleep(self.BATCH_DELAY)
+        
+        return processed_dramas, failed_dramas
     
     def _extract_categorical_features(self, drama_details: Dict) -> Tuple[str, str, str, List, List, str, str]:
         """
@@ -961,6 +1111,10 @@ class DataLoader:
         watched_dramas = []
         completed_items = watchlist_data.get('data', {}).get('list', {}).get('Completed', {}).get('items', [])
         
+        # Separate dramas that need to be fetched from API
+        dramas_to_fetch = []
+        dramas_from_cache = []
+        
         for item in completed_items:
             slug = item.get('id', '')
             score = item.get('score', '0.0')
@@ -972,15 +1126,85 @@ class DataLoader:
                 print(f"Invalid rating for {slug}: {score}")
                 continue
             
-            # Get drama data
-            processed_drama = self._get_watched_drama_data(slug, popular_dramas, non_popular_cache)
+            # Skip dramas with zero rating
+            if rating == 0.0:
+                print(f"Skipping {slug} with zero rating")
+                continue
             
-            # Add rating and append to watched list
-            if processed_drama:
-                processed_drama['user_rating'] = rating
-                watched_dramas.append(processed_drama)
+            # Check if drama is in popular cache
+            if slug in popular_dramas:
+                drama_data = popular_dramas[slug].copy()
+                drama_data['user_rating'] = rating
+                watched_dramas.append(drama_data)
+                continue
+            
+            # Check if drama is in non-popular cache
+            if slug in non_popular_cache:
+                drama_data = non_popular_cache[slug].copy()
+                drama_data['user_rating'] = rating
+                watched_dramas.append(drama_data)
+                continue
+            
+            # Drama needs to be fetched from API
+            dramas_to_fetch.append((slug, rating))
+        
+        # Fetch new dramas in parallel if any
+        if dramas_to_fetch:
+            print(f"Fetching {len(dramas_to_fetch)} new non-popular dramas in parallel...")
+            new_dramas = self._fetch_new_dramas_parallel(dramas_to_fetch)
+            
+            # Add fetched dramas to cache and watched list
+            for slug, rating, drama_data in new_dramas:
+                if drama_data:
+                    drama_data['user_rating'] = rating
+                    non_popular_cache[slug] = drama_data
+                    watched_dramas.append(drama_data)
         
         return watched_dramas, non_popular_cache
+
+    def _fetch_new_dramas_parallel(self, dramas_to_fetch: List[Tuple[str, float]]) -> List[Tuple[str, float, Dict]]:
+        """
+        Fetch multiple new dramas using appropriate method based on safety preferences.
+        
+        Parameters
+        ----------
+        dramas_to_fetch : List[Tuple[str, float]]
+            List of tuples containing (slug, rating) for dramas to fetch
+            
+        Returns
+        -------
+        List[Tuple[str, float, Dict]]
+            List of tuples containing (slug, rating, drama_data) for successfully fetched dramas
+        """
+        slugs = [slug for slug, _ in dramas_to_fetch]
+        ratings = [rating for _, rating in dramas_to_fetch]
+        
+        # Create a mapping from slug to rating
+        slug_to_rating = {slug: rating for slug, rating in dramas_to_fetch}
+        
+        # Fetch drama details using appropriate method based on configuration
+        text_processor = self._get_text_processor()
+        
+        if self.parallel_loading and len(slugs) > 1:
+            # Use parallel processing for multiple dramas in one go (no batching)
+            processed_dramas, failed_dramas = self._process_drama_batch_parallel(slugs, text_processor)
+        elif len(slugs) > 1:
+            # Use optimized sequential processing (low risk)
+            processed_dramas, failed_dramas = self._process_dramas_sequential_optimized(slugs, text_processor)
+        else:
+            # Use original sequential processing (safest)
+            processed_dramas, failed_dramas = self._process_drama_batch(slugs, text_processor)
+        
+        # Return results with ratings
+        results = []
+        for slug, rating in dramas_to_fetch:
+            if slug in processed_dramas:
+                results.append((slug, rating, processed_dramas[slug]))
+            else:
+                print(f"Failed to fetch drama {slug}")
+                results.append((slug, rating, None))
+        
+        return results
 
     def _separate_unwatched_dramas(self, popular_dramas: Dict, watched_slugs: Set[str]) -> List[Dict]:
         """
@@ -1114,3 +1338,59 @@ class DataLoader:
         crew['composers'] = list(set(crew['composers']))
         
         return crew
+
+    def _process_dramas_sequential_optimized(self, slugs: List[str], text_processor) -> Tuple[Dict, List]:
+        """
+        Process dramas sequentially with optimized delays for maximum safety.
+        
+        Parameters
+        ----------
+        slugs : List[str]
+            List of drama slugs to process
+        text_processor : object
+            TextProcessor instance for text cleaning and analysis
+            
+        Returns
+        -------
+        Tuple[Dict, List]
+            Tuple containing:
+            - processed_dramas: Dict[str, Dict], successfully processed dramas
+            - failed_dramas: List[str], slugs that failed to process
+            
+        Notes
+        -----
+        Uses sequential processing with optimized delays to avoid any risk of
+        triggering anti-bot detection while still providing some performance
+        improvements over the original implementation.
+        """
+        processed_dramas = {}
+        failed_dramas = []
+        
+        print(f"Processing {len(slugs)} dramas sequentially with optimized delays...")
+        
+        for i, slug in enumerate(slugs, 1):
+            print(f"Processing {i}/{len(slugs)}: {slug}")
+            
+            try:
+                # Add randomized delay for anti-bot detection safety
+                base_delay = self.rate_limit_delay
+                jitter = random.uniform(-self.JITTER_RANGE, self.JITTER_RANGE)
+                actual_delay = max(0.5, base_delay + jitter)  # Minimum 0.5s for safety
+                
+                time.sleep(actual_delay)
+                
+                drama_details = self.load_drama_details(slug)
+                processed_drama = self.extract_and_clean_drama_features(drama_details, text_processor)
+                
+                if processed_drama:
+                    processed_dramas[slug] = processed_drama
+                    print(f"✓ Successfully processed {slug}")
+                else:
+                    failed_dramas.append(slug)
+                    print(f"✗ Failed to process {slug}")
+                    
+            except Exception as e:
+                print(f"✗ Error processing {slug}: {e}")
+                failed_dramas.append(slug)
+        
+        return processed_dramas, failed_dramas

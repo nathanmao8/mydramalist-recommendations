@@ -1,4 +1,3 @@
-# evaluator.py
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import pandas as pd

@@ -15,6 +15,7 @@ textblob>=0.17.1
 # Web scraping and API requests
 requests>=2.25.1
 beautifulsoup4>=4.9.3
+aiohttp>=3.8.0
 
 # Utilities
 argparse

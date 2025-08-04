@@ -226,7 +226,7 @@ class TextProcessor:
         Notes
         -----
         Cleaning pipeline:
-        1. Remove spoiler warnings and disclaimers
+        1. Remove spoiler warnings
         2. Filter non-English characters 
         3. Normalize special characters to spaces
         4. Collapse multiple whitespace to single spaces

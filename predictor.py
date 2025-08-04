@@ -1,4 +1,3 @@
-# predictor.py
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
@@ -198,17 +197,38 @@ class ModelPredictor:
         traditional_features, hybrid_features = drama_features
         
         try:
-            predictions = {
-                'rf_traditional': trained_models['rf_traditional'].predict(traditional_features)[0],
-                'svm_traditional': trained_models['svm_traditional'].predict(traditional_features)[0],
-                'rf_bert': trained_models['rf_bert'].predict(hybrid_features)[0],
-                'svm_bert': trained_models['svm_bert'].predict(hybrid_features)[0]
-            }
+            predictions = {}
+            
+            # Try to get predictions from each model, handling missing models gracefully
+            model_configs = [
+                ('rf_traditional', trained_models.get('rf_traditional'), traditional_features),
+                ('svm_traditional', trained_models.get('svm_traditional'), traditional_features),
+                ('rf_bert', trained_models.get('rf_bert'), hybrid_features),
+                ('svm_bert', trained_models.get('svm_bert'), hybrid_features)
+            ]
+            
+            for model_name, model, features in model_configs:
+                if model is not None and hasattr(model, 'predict'):
+                    try:
+                        predictions[model_name] = model.predict(features)[0]
+                    except Exception as e:
+                        logger.warning(f"Failed to get prediction from {model_name}: {e}")
+                        predictions[model_name] = 0.0  # Fallback value
+                else:
+                    logger.warning(f"Model {model_name} not available for prediction")
+                    predictions[model_name] = 0.0  # Fallback value
+            
             return predictions
             
-        except (KeyError, IndexError, AttributeError) as e:
+        except Exception as e:
             logger.error(f"Error generating model predictions: {e}")
-            raise ValueError(f"Invalid model or feature data: {e}")
+            # Return fallback predictions instead of raising error
+            return {
+                'rf_traditional': 0.0,
+                'svm_traditional': 0.0,
+                'rf_bert': 0.0,
+                'svm_bert': 0.0
+            }
 
 class Predictor:
     """

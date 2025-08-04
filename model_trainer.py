@@ -1,4 +1,3 @@
-# model_trainer.py
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import SVR
@@ -239,13 +238,6 @@ class ModelTrainer:
                 'ranking_focus': True
             }
             
-            print("LOOCV evaluation completed. Mean Average Precision (MAP) scores:")
-            for model_name in ['RF_TRADITIONAL', 'SVM_TRADITIONAL', 'RF_BERT', 'SVM_BERT']:
-                map_10 = all_results.get(f'{model_name}_MAP_10%', 0)
-                map_25 = all_results.get(f'{model_name}_MAP_25%', 0)
-                map_33 = all_results.get(f'{model_name}_MAP_33%', 0)
-                print(f"  {model_name}: MAP@10%={map_10:.3f}, MAP@25%={map_25:.3f}, MAP@33%={map_33:.3f}")
-
             return trained_models, all_results, loocv_predictions
             
         except Exception as e:
@@ -608,6 +600,11 @@ class ModelTrainer:
         model_prefix : str
             Prefix for progress messages (e.g., "Traditional", "BERT").
             
+        Returns
+        -------
+        bool
+            True if both models trained successfully, False otherwise.
+            
         Notes
         -----
         Models are trained in-place. Error messages are printed if training fails.
@@ -616,8 +613,16 @@ class ModelTrainer:
             print(f"Training final {model_prefix} models on full dataset...")
             rf_model.fit(X, y)
             svm_model.fit(X, y)
+            
+            # Validate that models are properly trained
+            if not hasattr(rf_model, 'feature_importances_') or not hasattr(svm_model, 'support_vectors_'):
+                print(f"Warning: {model_prefix} models may not have trained properly")
+                return False
+                
+            return True
         except Exception as e:
             print(f"Error training final {model_prefix} models: {e}")
+            return False
 
     def train_model_set(self, X: np.ndarray, y: np.ndarray, rf_model, svm_model, model_prefix: str) -> Tuple[Dict, list, list, list]:
         """
@@ -669,7 +674,10 @@ class ModelTrainer:
             )
             
             # Train final models on full dataset
-            self._train_final_models(X, y, rf_model, svm_model, model_prefix)
+            training_success = self._train_final_models(X, y, rf_model, svm_model, model_prefix)
+            
+            if not training_success:
+                print(f"Warning: {model_prefix} models failed to train properly. Results may be unreliable.")
             
             return results, rf_predictions, svm_predictions, true_values
             
@@ -1027,3 +1035,38 @@ class ModelTrainer:
             
         except Exception as e:
             return {'error': f'Error generating training statistics: {e}'}
+
+    def validate_trained_models(self) -> Dict[str, bool]:
+        """
+        Validate that all trained models are properly accessible for prediction.
+        
+        Returns
+        -------
+        Dict[str, bool]
+            Dictionary indicating which models are valid for prediction:
+            - 'rf_traditional': bool
+            - 'svm_traditional': bool  
+            - 'rf_bert': bool
+            - 'svm_bert': bool
+        """
+        validation_results = {}
+        
+        # Check Random Forest models
+        for model_name in ['rf_traditional', 'rf_bert']:
+            model = getattr(self, model_name, None)
+            if model is not None and hasattr(model, 'feature_importances_'):
+                validation_results[model_name] = True
+            else:
+                validation_results[model_name] = False
+                print(f"Warning: {model_name} model is not properly trained")
+        
+        # Check SVM models
+        for model_name in ['svm_traditional', 'svm_bert']:
+            model = getattr(self, model_name, None)
+            if model is not None and hasattr(model, 'support_vectors_'):
+                validation_results[model_name] = True
+            else:
+                validation_results[model_name] = False
+                print(f"Warning: {model_name} model is not properly trained")
+        
+        return validation_results
