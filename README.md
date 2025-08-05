@@ -1,80 +1,93 @@
 # MyDramaList Recommendation System
 
-> **Work in Progress** - This project is currently under active development.
+A machine learning-based recommendation system that provides personalized drama recommendations for MyDramaList users. The system combines traditional ML approaches with semantic similarity techniques to understand user preferences and predict ratings for unwatched dramas.
 
 ## Overview
 
-A sophisticated drama recommendation system that combines machine learning models with personalized taste profile analysis to provide accurate and explainable recommendations for MyDramaList users. The system leverages both traditional ML approaches and advanced semantic similarity techniques to understand user preferences and predict ratings for unwatched dramas.
+This recommendation system leverages the Kuryana API for retrieving drama data and uses two machine learning models to generate a ranking of recommendations. The system analyzes user watch history and ratings to predict how users would rate unwatched dramas, providing predictions and most impactful features.
+
+Key capabilities include:
+
+- Multi-model approach using Random Forest and SVM
+- Advanced text analysis with BERT embeddings
+- Semantic similarity analysis for content understanding
+- Comprehensive evaluation with cross-validation
+- Model interpretability with permutation feature importance
 
 ## Features
 
-### **Core Recommendation Engine**
-- **Machine Learning Models**: Random Forest and SVM with both traditional and BERT-enhanced features
-- **Taste Profile Analysis**: Personalized user preference modeling across multiple dimensions
-- **Semantic Similarity**: Advanced text analysis using sentence transformers
-- **Multi-dimensional Features**: Genres, tags, cast, crew, synopsis, and reviews
+### Core Recommendation Engine
 
-### **Advanced Analytics**
-- **Model Interpretability**: SHAP explanations for understanding feature importance
-- **Cross-validation**: LOOCV and K-fold evaluation for robust performance assessment
-- **Performance Metrics**: Precision of 0.632 for high-rated content identification
-- **Dynamic Thresholding**: Adaptive similarity thresholds based on user rating patterns
+- **Multi-Model Architecture**: Random Forest and SVM with traditional and BERT-enhanced features
+- **Semantic Understanding**: Advanced text analysis using sentence transformers
+- **Dynamic Feature Engineering**: Configurable feature combinations for optimal performance
+- **Real-time Data Integration**: Live data retrieval from Kuryana API
 
-### **Taste Profile System**
-- **Categorical Preferences**: Genre, tag, actor, director, screenwriter preferences
-- **Text Content Analysis**: Synopsis and review embedding similarity
-- **Semantic Patterns**: Advanced pattern recognition in content preferences
-- **Rating Pattern Analysis**: User rating distribution and consistency analysis
+### Advanced Analytics
 
-### **Evaluation & Validation**
-- **Stratified Evaluation**: Holdout evaluation for taste profile performance
-- **Cross-validation**: Comprehensive model validation across different datasets
-- **Feature Importance**: Detailed analysis of what drives recommendations
-- **Performance Weighting**: Dynamic component weighting based on performance
+- **Model Interpretability**: Permutation feature importance for understanding feature importance
+- **Comprehensive Evaluation**: LOOCV and K-fold
+- **Performance Metrics**: Precision of 0.632 for high-rated content identification [TODO]
+- **Ranking Evaluation**: MAP and Precision@K metrics for recommendation quality
 
-## Architecture
+### Feature Engineering
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Kuryana API   │    │   Data Loader    │    │   Feature       │
-│   Integration   │───▶│   & Processor    │───▶│   Engineer      │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │                        │
-                                ▼                        ▼
-                       ┌──────────────────┐    ┌─────────────────┐
-                       │   Taste Profile  │    │   ML Models     │
-                       │   Analyzer       │    │   (RF/SVM)      │
-                       └──────────────────┘    └─────────────────┘
-                                │                        │
-                                ▼                        ▼
-                       ┌──────────────────┐    ┌─────────────────┐
-                       │   Enhanced       │    │   Evaluator &   │
-                       │   Predictions    │    │   Interpreter   │
-                       └──────────────────┘    └─────────────────┘
-```
+- **Text Processing**: TF-IDF and sentiment analysis
+- **Categorical Features**: Genres, tags, cast, crew with position-weighted encoding
+- **Numerical Features**: Year, ratings, watchers
+- **Semantic Similarity**: Synopsis and review embedding similarity analysis
+
+### Data Integration
+
+- **Kuryana API Integration**: Real-time drama data retrieval
+- **Caching System**: Efficient caching for embeddings and API responses
+- **Parallel Processing**: Optimized data loading and feature extraction
+- **Error Handling**: Robust error handling for API failures and data issues
+
+### Core Components
+
+1. **KuryanaAPI** (`main.py`): Handles API communication and data retrieval
+2. **DataLoader** (`data_loader.py`): Manages drama data loading, caching, and processing
+3. **FeatureEngineer** (`feature_engineer.py`): Comprehensive feature extraction and engineering
+4. **TextProcessor** (`text_processor.py`): Text preprocessing and sentiment analysis
+5. **BertFeatureExtractor** (`bert_extractor.py`): BERT embeddings with caching
+6. **ModelTrainer** (`model_trainer.py`): Model training with cross-validation
+7. **Predictor** (`predictor.py`): Prediction generation with confidence scoring
+8. **Evaluator** (`evaluator.py`): Performance evaluation and model interpretation
 
 ## Installation
 
 ### Prerequisites
+
 - Python 3.8 or higher
 - Git
+- 8GB+ RAM recommended for large datasets
+- 2GB+ storage for caching and model files
 
 ### Setup
-1. Clone the repository:
+
+1. **Clone the repository**:
+
 ```bash
 git clone <repository-url>
 cd mydramalist-recommendations
 ```
 
-2. Install dependencies:
+2. **Install dependencies**:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set environment variable for tokenizers:
-```bash
-export TOKENIZERS_PARALLELISM=false
-```
+### Dependencies
+
+The system requires the following key dependencies:
+
+- **Core ML**: scikit-learn, numpy, pandas, scipy
+- **Deep Learning**: torch, transformers, sentence-transformers
+- **Text Processing**: vaderSentiment, textblob
+- **Web Scraping**: requests, beautifulsoup4
+- **Visualization**: matplotlib, seaborn
 
 ## Usage
 
@@ -89,127 +102,112 @@ python main.py --user-id YOUR_USERNAME
 ### Advanced Usage
 
 ```bash
-# Enable all features with custom configuration
+# Enable specific features
 python main.py \
     --user-id YOUR_USERNAME \
     --use-bert \
     --use-semantic-similarity \
-    --enable-taste-profile \
-    --taste-weight 0.3 \
+    --use-sentiment \
     --output my_recommendations.csv
 
-# Run taste profile evaluation only
-python main_taste_eval.py \
+# Run with performance optimizations
+python main.py \
     --user-id YOUR_USERNAME \
-    --run-stratified-eval \
-    --no-kfold-eval \
-    --no-loocv-eval
+    --parallel-loading \
+    --max-workers 8 \
+    --batch-size 25 \
+    --api-delay 0.05
 ```
 
 ### Command Line Arguments
 
 #### Core Arguments
+
 - `--user-id`: **Required** - MyDramaList username for data retrieval
 - `--output`: Output CSV file path (default: `drama_predictions.csv`)
 
 #### Feature Configuration
-- `--use-bert`: Enable BERT embeddings (computationally expensive)
-- `--use-sentiment`: Enable sentiment analysis features
-- `--use-tfidf`: Enable TF-IDF text features
-- `--use-semantic-similarity`: Enable semantic similarity features
-- `--use-cast`: Enable cast/actor features
-- `--use-crew`: Enable director/screenwriter/composer features
-- `--use-genres`: Enable genre features
-- `--use-tags`: Enable tag features
 
-#### Taste Profile Options
-- `--enable-taste-profile`: Enable taste profile analysis (default: True)
-- `--taste-weight`: Weight for taste similarity in predictions (0.0-1.0)
-- `--run-stratified-eval`: Run stratified holdout evaluation
-- `--eval-test-size`: Test size for evaluation (0.1-0.5)
+- `--use-bert`: Enable BERT embeddings (default: True)
+- `--use-sentiment`: Enable sentiment analysis features (default: True)
+- `--use-tfidf`: Enable TF-IDF text features (default: True)
+- `--use-semantic-similarity`: Enable semantic similarity features (default: True)
+- `--use-cast`: Enable cast/actor features (default: True)
+- `--use-crew`: Enable director/screenwriter/composer features (default: True)
+- `--use-genres`: Enable genre features (default: True)
+- `--use-tags`: Enable tag features (default: True)
+- `--use-numerical-features`: Enable numerical features (default: True)
+- `--use-country`: Enable country features (default: True)
+- `--use-type`: Enable drama type features (default: True)
+- `--use-position-weights`: Enable position-weighted encoding (default: True)
 
 #### Advanced Options
+
 - `--tfidf-max-features`: Maximum TF-IDF features (default: 1000)
-- `--bert-cache`: Use BERT embedding cache (recommended)
-- `--semantic-model`: Sentence transformer model choice
+- `--bert-cache`: Use BERT embedding cache (default: True)
+- `--semantic-model`: Sentence transformer model choice (default: 'all-MiniLM-L6-v2')
+- `--validation-method`: Cross-validation method ('loocv' or 'kfold', default: 'kfold')
+- `--n-folds`: Number of folds for k-fold validation (default: 10)
+
+#### Performance Options
+
+- `--parallel-loading`: Enable parallel data loading (default: True)
+- `--no-parallel-loading`: Disable parallel data loading
+- `--max-workers`: Maximum parallel workers (default: 5)
+- `--batch-size`: Batch size for processing (default: 20)
+- `--api-delay`: Delay between API calls in seconds (default: 0.1)
 
 ## API Integration
 
-The system integrates with the [Kuryana API](https://kuryana.tbdh.app) to retrieve drama data:
+The system integrates with the [Kuryana API](https://kuryana.tbdh.app) to retrieve comprehensive drama data:
 
-- **Drama Information**: Title, synopsis, genres, tags
-- **Cast Data**: Actor and character information
+### Data Sources
+
+- **Drama Information**: Title, synopsis, genres, tags, year, rating, watchers
+- **Cast Data**: Actor and character information with role details
 - **Review Data**: User reviews and helpfulness scores
 - **User Lists**: Personal drama ratings and watch history
 
-## Output Files
+### API Features
 
-The system generates several output files:
+- **Error Handling**: Robust error handling for network issues
+- **Rate Limiting**: Built-in delays to respect API limits
+- **Caching**: Efficient caching for repeated requests
+- **Parallel Processing**: Optimized data loading with configurable workers
 
-### **Core Outputs**
-- `drama_predictions.csv` - Final recommendations with predicted ratings
-- `enhanced_predictions.csv` - Predictions enhanced with taste similarity
+### API Endpoints Used
 
-### **Analysis Files**
-- `taste_analysis_results.csv` - Taste profile insights and statistics
-- `taste_similarities.csv` - Similarity scores for all unwatched dramas
-- `user_taste_profile.json` - Complete taste profile (reloadable)
+- `/id/{slug}` - Drama information
+- `/id/{slug}/cast` - Cast information
+- `/id/{slug}/reviews` - Review data
+- `/user/{user_id}/dramalist` - User watchlist and ratings
 
-### **Evaluation Results**
-- `loocv_evaluation_results.csv` - Cross-validation performance metrics
-- `stratified_evaluation_results.csv` - Stratified evaluation results
-- `kfold_evaluation_results.csv` - K-fold cross-validation results
+## Performance Evaluation
 
-### **Visualizations**
-- `loocv_evaluation_visualization.png` - LOOCV performance plots
-- `stratified_evaluation_visualization.png` - Stratified evaluation plots
-- `kfold_evaluation_visualization.png` - K-fold evaluation plots
-- `shap_summary_*.png` - SHAP feature importance plots
+### Evaluation Metrics
 
-## Performance
+- **MAP (Mean Average Precision)**: Ranking quality assessment
+- **Precision@K**: Top-K recommendation accuracy
 
-### Current Achievements
-- **Precision Score**: 0.632 for high-rated content identification
-- **Multi-model Approach**: Random Forest and SVM with traditional and BERT features
-- **Comprehensive Evaluation**: LOOCV, K-fold, and stratified validation
-- **Interpretable Results**: SHAP explanations for feature importance
+### Cross-Validation Methods
 
-### Model Performance
-The system uses multiple evaluation metrics:
-- **Mean Squared Error (MSE)**: Overall prediction accuracy
-- **Mean Absolute Error (MAE)**: Average prediction error
-- **R² Score**: Model fit quality
-- **Precision/Recall**: High-rating prediction accuracy
-
-## Taste Profile System
-
-### Components
-1. **Categorical Preferences**: Genre, tag, cast, crew preferences
-2. **Text Content Analysis**: Synopsis and review embedding similarity
-3. **Semantic Patterns**: Advanced pattern recognition
-4. **Rating Patterns**: User rating distribution analysis
-
-### Features
-- **Weighted by Ratings**: Higher-rated dramas have more influence
-- **Multi-dimensional**: Combines explicit and implicit preferences
-- **Explainable**: Provides reasoning for each recommendation
-- **Dynamic**: Adapts to user rating patterns
+- **K-Fold Cross-Validation**: Standard cross-validation with configurable folds
+- **Leave-One-Out Cross-Validation (LOOCV)**: Comprehensive model validation
 
 ## Technical Details
 
-### Dependencies
-- **Core ML**: scikit-learn, numpy, pandas, scipy
-- **Deep Learning**: torch, transformers, sentence-transformers
-- **Text Processing**: vaderSentiment, textblob
-- **Visualization**: matplotlib, seaborn
-- **Interpretability**: shap
-- **Web Scraping**: requests, beautifulsoup4
+### Caching System
 
-### System Requirements
-- **Memory**: 8GB+ RAM recommended for large datasets
-- **Storage**: 2GB+ for caching and model files
-- **GPU**: Optional for BERT acceleration
-- **Network**: Internet connection for API access
+- **BERT Embeddings**: Cached in `bert_embeddings_cache.json`
+- **Semantic Embeddings**: Cached in `semantic_embeddings_cache.json`
+- **Popular Dramas**: Cached in `popular_dramas_processed.json`
+- **Non-popular Watched**: Cached in `watched_non_popular_cache.json`
+
+### Performance Optimizations
+
+- **Parallel Processing**: Configurable workers for data loading
+- **Batch Processing**: Optimized feature extraction
+- **Memory Management**: Efficient handling of large datasets
 
 ## Contributing
 
@@ -221,11 +219,12 @@ This project is for personal use and educational purposes.
 
 ## Acknowledgments
 
-- [Kuryana API](https://github.com/tbdsux/kuryana) for drama data
-- [MyDramaList](https://mydramalist.com) for the drama database
-- [Sentence Transformers](https://www.sbert.net/) for semantic similarity
-- [SHAP](https://github.com/slundberg/shap) for model interpretability
+- **[Kuryana API](https://github.com/tbdsux/kuryana)** for providing comprehensive drama data
+- **[MyDramaList](https://mydramalist.com)** for maintaining the extensive drama database
+- **[Sentence Transformers](https://www.sbert.net/)** for semantic similarity capabilities
+- **[scikit-learn](https://scikit-learn.org/)** for machine learning algorithms, evaluation metrics, and permutation feature importance
+- **[Transformers](https://huggingface.co/transformers/)** for BERT model integration
 
 ---
 
-**Note**: This system is designed for personal use and educational purposes. Please respect the terms of service for any external APIs or data sources used. 
+**Note**: This system is designed for personal use and educational purposes. Please respect the terms of service for any external APIs or data sources used.
