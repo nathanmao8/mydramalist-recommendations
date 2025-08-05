@@ -642,7 +642,7 @@ def validate_data_requirements(watched_dramas, validation_method='kfold', n_fold
     }
     
     if num_dramas < 10:
-        message = f"❌ Insufficient data: You have only {num_dramas} rated dramas. Need at least 10 dramas to make predictions."
+        message = f"Insufficient data: You have only {num_dramas} rated dramas. Need at least 10 dramas to make predictions."
         return False, message, adjusted_config
     
     elif num_dramas < 20:
@@ -650,7 +650,7 @@ def validate_data_requirements(watched_dramas, validation_method='kfold', n_fold
         adjusted_config['validation_method'] = 'loocv'
         adjusted_config['n_folds'] = num_dramas
         
-        message = f"⚠️  Small dataset detected: {num_dramas} rated dramas. "
+        message = f"Small dataset detected: {num_dramas} rated dramas. "
         message += "Using Leave-One-Out Cross-Validation for better evaluation. "
         message += f"Consider rating more dramas (aim for 20+) for optimal recommendations."
         
@@ -661,7 +661,7 @@ def validate_data_requirements(watched_dramas, validation_method='kfold', n_fold
         adjusted_config['validation_method'] = 'kfold'
         adjusted_config['n_folds'] = min(n_folds, num_dramas // 2)  # Ensure n_folds < num_dramas
         
-        message = f"✅ Sufficient data: {num_dramas} rated dramas for training."
+        message = f"Sufficient data: {num_dramas} rated dramas for training."
         return True, message, adjusted_config
 
 

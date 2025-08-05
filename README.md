@@ -27,7 +27,6 @@ Key capabilities include:
 
 - **Model Interpretability**: Permutation feature importance for understanding feature importance
 - **Comprehensive Evaluation**: LOOCV and K-fold
-- **Performance Metrics**: Precision of 0.632 for high-rated content identification [TODO]
 - **Ranking Evaluation**: MAP and Precision@K metrics for recommendation quality
 
 ### Feature Engineering
@@ -46,14 +45,15 @@ Key capabilities include:
 
 ### Core Components
 
-1. **KuryanaAPI** (`main.py`): Handles API communication and data retrieval
+1. **Main Application** (`main.py`): Orchestrates recommendation pipeline and API initialization
 2. **DataLoader** (`data_loader.py`): Manages drama data loading, caching, and processing
-3. **FeatureEngineer** (`feature_engineer.py`): Comprehensive feature extraction and engineering
-4. **TextProcessor** (`text_processor.py`): Text preprocessing and sentiment analysis
-5. **BertFeatureExtractor** (`bert_extractor.py`): BERT embeddings with caching
-6. **ModelTrainer** (`model_trainer.py`): Model training with cross-validation
-7. **Predictor** (`predictor.py`): Prediction generation with confidence scoring
-8. **Evaluator** (`evaluator.py`): Performance evaluation and model interpretation
+3. **TextProcessor** (`text_processor.py`): Text preprocessing and sentiment analysis
+4. **SemanticSimilarityExtractor** (`semantic_similarity.py`): Advanced text similarity analysis and embeddings
+5. **FeatureEngineer** (`feature_engineer.py`): Comprehensive feature extraction and engineering
+6. **BertFeatureExtractor** (`bert_extractor.py`): BERT embeddings with caching
+7. **ModelTrainer** (`model_trainer.py`): Model training with cross-validation
+8. **Predictor** (`predictor.py`): Prediction generation with confidence scoring
+9. **Evaluator** (`evaluator.py`): Performance evaluation and model interpretation
 
 ## Installation
 
@@ -61,8 +61,8 @@ Key capabilities include:
 
 - Python 3.8 or higher
 - Git
-- 8GB+ RAM recommended for large datasets
-- 2GB+ storage for caching and model files
+- 4GB+ RAM recommended for BERT processing
+- 500MB+ storage for caching and model files
 
 ### Setup
 

@@ -943,7 +943,7 @@ class DataLoader:
                 
             with open(self.cache_file, 'r', encoding='utf-8') as f:
                 cache_data = json.load(f)
-                print(f"Successfully loaded {len(cache_data)} dramas from cache")
+                print(f"Successfully loaded {len(cache_data)} popular dramas from cache")
                 return cache_data
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON from cache file: {e}")
