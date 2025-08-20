@@ -52,7 +52,7 @@ Key capabilities include:
 5. **FeatureEngineer** (`feature_engineer.py`): Comprehensive feature extraction and engineering
 6. **BertFeatureExtractor** (`bert_extractor.py`): BERT embeddings with caching
 7. **ModelTrainer** (`model_trainer.py`): Model training with cross-validation
-8. **Predictor** (`predictor.py`): Prediction generation with confidence scoring
+8. **Predictor** (`predictor.py`): Prediction generation
 9. **Evaluator** (`evaluator.py`): Performance evaluation and model interpretation
 
 ## Installation
